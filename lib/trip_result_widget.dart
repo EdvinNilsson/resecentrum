@@ -1,0 +1,317 @@
+import 'dart:async';
+import 'dart:math';
+
+import 'package:dotted_line/dotted_line.dart';
+import 'package:flutter/material.dart';
+
+import 'extensions.dart';
+import 'map_widget.dart';
+import 'options_panel.dart';
+import 'reseplaneraren.dart';
+import 'trip_detail_widget.dart';
+import 'utils.dart';
+
+class TripResultWidget extends StatelessWidget {
+  final Location _from;
+  final Location _to;
+  final DateTime? _dateTime;
+  final bool? _searchForArrival;
+  final TripOptions _tripOptions;
+
+  TripResultWidget(this._from, this._to, this._dateTime, this._searchForArrival, this._tripOptions, {Key? key})
+      : super(key: key);
+
+  final StreamController<Iterable<Trip>?> _streamController = StreamController.broadcast();
+
+  Future<void> _handleRefresh() async => _updateTrip();
+
+  @override
+  Widget build(BuildContext context) {
+    _updateTrip();
+    var bgLuminance = Theme.of(context).cardColor.computeLuminance();
+    return Scaffold(
+        appBar: AppBar(
+          title: tripTitle(_from.name, _to.name, via: _tripOptions.viaFieldController.location?.name),
+        ),
+        backgroundColor: cardBackgroundColor(context),
+        body: RefreshIndicator(
+          onRefresh: () => _handleRefresh(),
+          child: StreamBuilder<Iterable<Trip>?>(
+            builder: (context, tripList) {
+              if (tripList.connectionState == ConnectionState.waiting) return loadingPage();
+              if (!tripList.hasData) return errorPage(() => {_updateTrip()});
+              if (tripList.data!.isEmpty) return noDataPage('Inga reseförslag hittades.');
+              int maxTripTime = _getMaxTripTime(tripList.data!);
+              return ListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                itemCount: tripList.data!.length,
+                itemBuilder: (context, i) {
+                  var trip = tripList.data!.elementAt(i);
+                  var tripTime = getTripTime(trip);
+                  bool cancelled = trip.leg.any((l) => l.cancelled);
+                  List<String> notes = <String>[]
+                      .addIf(!trip.travelWarranty, 'Resegaranti gäller ej för denna resa.')
+                      .addIf(trip.alternative, 'Reseförslaget baseras på aktuell trafiksituation.');
+                  List<String> warnings = <String>[]
+                      .addIf(!cancelled && !_isValidTrip(trip), 'Anslutning kommer förmodligen att missas.')
+                      .addIf(
+                          cancelled,
+                          trip.leg
+                                  .where((l) => l.cancelled)
+                                  .map((l) => l.name.uncapitalize())
+                                  .joinNaturally()
+                                  .capitalize() +
+                              ' är inställd.');
+                  return Card(
+                      child: InkWell(
+                    onTap: () async {
+                      await Navigator.push(context, MaterialPageRoute(builder: (context) {
+                        return TripDetailWidget(trip);
+                      }));
+                    },
+                    onLongPress: () async {
+                      await Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
+                        return MapWidget(trip.leg
+                            .map((l) => l.journeyDetailRef == null
+                                ? MapJourney(walk: true, geometry: l.cachedGeometry, geometryRef: l.geometryRef!)
+                                : MapJourney(
+                                    journeyDetailRef: l.journeyDetailRef,
+                                    journeyPart: IdxJourneyPart(l.origin.routeIdx!, l.destination.routeIdx!)))
+                            .toList(growable: false));
+                      }));
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _legBar(trip, bgLuminance, maxTripTime, tripTime.inMinutes, context),
+                        const SizedBox(height: 8),
+                        Row(children: [
+                          Container(
+                            constraints: const BoxConstraints(minWidth: 56),
+                            child: Text(
+                                trip.leg.first.origin.dateTime.time() +
+                                    getDelayString(getTripLocationDelay(trip.leg.first.origin)),
+                                style: trip.leg.first.cancelled ? cancelledTextStyle : null),
+                          ),
+                          const SizedBox(width: 8),
+                          Wrap(
+                              spacing: 12,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: <Widget>[
+                                TripTimeWidget(tripTime, trip.leg.firstWhere((l) => l.type != 'WALK'))
+                                //iconAndText(Icons.access_time, ),
+                              ]
+                                  .insertIf(_anyNote(trip), 0, _getNotesIcon(trip))
+                                  .insertIf(cancelled, 0, const Text('Inställd', style: cancelledTextStyle))
+                                  .addIf(
+                                      trip.leg.any((l) =>
+                                          (l.origin.rtDateTime ?? l.destination.rtDateTime) != null &&
+                                          l.accessibility == null),
+                                      const Icon(Icons.not_accessible))),
+                          Expanded(child: Container()),
+                          const SizedBox(width: 8),
+                          Text(
+                              trip.leg.last.destination.dateTime.time() +
+                                  getDelayString(getTripLocationDelay(trip.leg.last.destination)),
+                              style: trip.leg.last.cancelled
+                                  ? const TextStyle(color: Colors.red, decoration: TextDecoration.lineThrough)
+                                  : null)
+                        ]),
+                        if (notes.isNotEmpty || warnings.isNotEmpty) const SizedBox(height: 8),
+                        Wrap(
+                            children: [
+                          warnings.map<Widget>((msg) => iconAndText(Icons.warning, msg,
+                              iconColor: Colors.red, textColor: Theme.of(context).hintColor)),
+                          notes.map<Widget>((msg) => Text(msg, style: TextStyle(color: Theme.of(context).hintColor)))
+                        ].expand((x) => x).toList(growable: false))
+                      ]),
+                    ),
+                  ));
+                },
+              );
+            },
+            stream: _streamController.stream,
+          ),
+        ));
+  }
+
+  void _updateTrip() async {
+    Iterable<Trip>? result = await reseplaneraren.getTrip(
+      originId: _from is StopLocation ? (_from as StopLocation).id : null,
+      destId: _to is StopLocation ? (_to as StopLocation).id : null,
+      originCoordLat: _from is StopLocation ? null : _from.lat,
+      originCoordLong: _from is StopLocation ? null : _from.lon,
+      originCoordName: _from is StopLocation ? null : _from.name,
+      destCoordLat: _to is StopLocation ? null : _to.lat,
+      destCoordLong: _to is StopLocation ? null : _to.lon,
+      destCoordName: _to is StopLocation ? null : _to.name,
+      dateTime: _dateTime,
+      additionalChangeTime: _tripOptions.changeMarginOptions.minutes,
+      wheelChairSpace: _tripOptions.wheelchairOptions.wheelchair ? true : null,
+      rampOrLift: _tripOptions.wheelchairOptions.wheelchair ? true : null,
+      useTram: !_tripOptions.toggleVehicleOptions.isSelected[0] ? false : null,
+      useBus: !_tripOptions.toggleVehicleOptions.isSelected[1] ? false : null,
+      useVas: !_tripOptions.toggleVehicleOptions.isSelected[2] ? false : null,
+      useRegTrain: !_tripOptions.toggleVehicleOptions.isSelected[3] ? false : null,
+      useLDTrain: !_tripOptions.toggleVehicleOptions.isSelected[3] ? false : null,
+      useBoat: !_tripOptions.toggleVehicleOptions.isSelected[4] ? false : null,
+      viaId: (_tripOptions.viaFieldController.location as StopLocation?)?.id,
+      needGeo: true,
+      searchForArrival: _searchForArrival,
+    );
+
+    _streamController.add(result);
+  }
+
+  Widget _legBar(Trip trip, double bgLuminance, int maxTripTime, int tripTime, BuildContext context) {
+    var children = <Widget>[];
+    if (trip.leg.isEmpty) return Container();
+
+    int minutes = 0;
+    DateTime startTime = trip.leg.first.origin.getDateTime();
+    int flex;
+
+    Leg? before;
+
+    for (var leg in trip.leg) {
+      if (leg.type == 'WALK' && leg.origin.name == leg.destination.name) continue;
+      if (leg.type == 'WALK' && before?.type == 'WALK') continue;
+
+      flex = leg.origin.getDateTime().difference(startTime).inMinutes - minutes;
+      if (flex > 0) {
+        minutes += flex;
+        children.add(Expanded(flex: flex, child: Container()));
+      }
+
+      flex = leg.destination.getDateTime().difference(startTime).inMinutes - minutes;
+      if (flex <= 0) flex = 1;
+      minutes += flex;
+
+      children.add(Expanded(
+          flex: flex,
+          child: leg.type != 'WALK'
+              ? _lineBox(leg, bgLuminance, context)
+              : Stack(
+                  alignment: Alignment.bottomCenter,
+                  children: [const Icon(Icons.directions_walk), DottedLine(dashColor: Theme.of(context).hintColor)])));
+
+      before = leg;
+    }
+
+    children.add(Expanded(flex: maxTripTime - tripTime, child: Container()));
+
+    return Row(children: children);
+  }
+
+  Widget _lineBox(Leg leg, double bgLuminance, BuildContext context) {
+    BoxDecoration decoration =
+        lineBoxDecoration(leg.bgColor ?? Colors.black, leg.fgColor ?? Colors.white, bgLuminance, context);
+    if (leg.cancelled) decoration = decoration.copyWith(border: Border.all(color: Colors.red, width: 4));
+    return PhysicalModel(
+      elevation: 1.5,
+      color: leg.bgColor ?? Colors.black,
+      borderRadius: BorderRadius.circular(3),
+      child: Container(
+          decoration: decoration,
+          height: 26,
+          child: Center(
+              child: Text(leg.sname ?? leg.name,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: leg.cancelled ? Colors.red : leg.fgColor,
+                      fontWeight: FontWeight.bold,
+                      overflow: TextOverflow.ellipsis,
+                      decoration: leg.cancelled ? TextDecoration.lineThrough : null)))),
+    );
+  }
+
+  int _getMaxTripTime(Iterable<Trip> trips) {
+    return trips.map((trip) => getTripTime(trip).inMinutes).reduce(max);
+  }
+
+  bool _anyNote(Trip trip) {
+    return trip.leg
+        .any((leg) => leg.notes.isNotEmpty || leg.origin.notes.isNotEmpty || leg.destination.notes.isNotEmpty);
+  }
+
+  bool _noteOfSeverity(Trip trip, String severity) {
+    return trip.leg.any((leg) =>
+        leg.notes.any((n) => n.severity == severity) ||
+        leg.origin.notes.any((n) => n.severity == severity) ||
+        leg.destination.notes.any((n) => n.severity == severity));
+  }
+
+  Widget _getNotesIcon(Trip trip) {
+    if (_noteOfSeverity(trip, 'high')) return getNoteIcon('high');
+    if (_noteOfSeverity(trip, 'normal')) return getNoteIcon('normal');
+    return getNoteIcon('low');
+  }
+
+  bool _isValidTrip(Trip trip) {
+    if (!trip.valid) return false;
+
+    // Check walks between stops
+    for (int i = 0; i < trip.leg.length; i++) {
+      var leg = trip.leg.elementAt(i);
+      if (leg.type == 'WALK' && leg.origin.name != leg.destination.name) {
+        Leg? before = trip.leg.tryElementAt(i - 1);
+        Leg? after = nextLeg(trip.leg, i);
+        if (before == null || after == null) continue;
+        if (after.origin.getDateTime().difference(before.destination.getDateTime()) < const Duration(minutes: 5)) {
+          return false;
+        }
+      }
+    }
+
+    // Check change times
+    Leg? before;
+    for (var leg in trip.leg) {
+      if (leg.type == 'WALK') continue;
+      if (before != null &&
+          leg.origin.getDateTime().difference(before.destination.getDateTime()) <
+              Duration(minutes: _tripOptions.changeMarginOptions.minutes ?? 5)) return false;
+      before = leg;
+    }
+
+    return true;
+  }
+}
+
+class TripTimeWidget extends StatefulWidget {
+  final Duration _tripTime;
+  final Leg _leg;
+
+  const TripTimeWidget(this._tripTime, this._leg, {Key? key}) : super(key: key);
+
+  @override
+  State<TripTimeWidget> createState() => _TripTimeWidgetState();
+}
+
+class _TripTimeWidgetState extends State<TripTimeWidget> {
+  late final Timer _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 15), (timer) {
+      if (!mounted) return;
+      setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [
+      const Icon(Icons.access_time),
+      const SizedBox(width: 5),
+      highlightFirstPart(getDurationString(widget._tripTime) +
+          getTripCountdown(widget._leg.cancelled ? null : widget._leg.origin.getDateTime())),
+    ]);
+  }
+}
