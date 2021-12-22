@@ -268,8 +268,8 @@ class TripResultWidget extends StatelessWidget {
     for (var leg in trip.leg) {
       if (leg.type == 'WALK') continue;
       if (before != null &&
-          leg.origin.getDateTime().difference(before.destination.getDateTime()) <
-              Duration(minutes: _tripOptions.changeMarginOptions.minutes ?? 5)) return false;
+          leg.origin.getDateTime().difference(before.destination.getDateTime()) <=
+              Duration(minutes: (_tripOptions.changeMarginOptions.minutes ?? 5) ~/ 2)) return false;
       before = leg;
     }
 

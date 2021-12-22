@@ -80,6 +80,7 @@ class HomeState extends State<Home> {
     TripWidget tripWidget = _tabs.firstWhere((tab) => tab is TripWidget) as TripWidget;
 
     if (switchPage) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
       setState(() {
         _currentIndex = _tabs.indexOf(tripWidget);
       });
