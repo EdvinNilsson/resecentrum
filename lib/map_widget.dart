@@ -347,7 +347,17 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     if (_journeyDetails.isEmpty) return;
     var response = await vehiclePositionsService.getPositions(_journeyIds);
 
-    if (response != null && response.isNotEmpty && mounted) {
+    if (!mounted) return;
+
+    if (response == null) {
+      for (var vehicle in _vehicles) {
+        if (!vehicle.outdatedChanged(true)) continue;
+        var opacity = 0.5;
+        _mapController.updateCircle(
+            await vehicle.bgCircle, CircleOptions(circleOpacity: opacity, circleStrokeOpacity: opacity));
+        _mapController.updateSymbol(await vehicle.fgSymbol, SymbolOptions(iconOpacity: opacity));
+      }
+    } else {
       for (var vehiclePosition in response) {
         var vehicle = _getVehicle(vehiclePosition);
         var coord = LatLng(vehiclePosition.lat, vehiclePosition.long);
