@@ -608,20 +608,6 @@ class Trip {
   }
 }
 
-/*enum VehicleType {
-  VAS,
-  LDT,
-  REG,
-  BUS,
-  BOAT,
-  TRAM,
-  TAXI,
-}
-
-VehicleType parseVehicleType(String str) {
-  return VehicleType.values.firstWhere((e) => e.toString() == str);
-}*/
-
 class Leg {
   late Color? fgColor;
   late bool? booking;

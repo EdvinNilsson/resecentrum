@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:collection/collection.dart';
 import 'package:dotted_line/dotted_line.dart';
 import 'package:flutter/material.dart';
 
@@ -98,11 +99,10 @@ class TripResultWidget extends StatelessWidget {
                               spacing: 12,
                               crossAxisAlignment: WrapCrossAlignment.center,
                               children: <Widget>[
-                                TripTimeWidget(tripTime, trip.leg.firstWhere((l) => l.type != 'WALK'))
-                                //iconAndText(Icons.access_time, ),
+                                TripTimeWidget(tripTime, trip.leg.firstWhereOrNull((l) => l.type != 'WALK'))
                               ]
                                   .insertIf(_anyNote(trip), 0, _getNotesIcon(trip))
-                                  .insertIf(cancelled, 0, const Text('Inställd', style: cancelledTextStyle))
+                                  .insertIf(cancelled, 0, const Text('Inställd', style: TextStyle(color: Colors.red)))
                                   .addIf(
                                       trip.leg.any((l) =>
                                           (l.origin.rtDateTime ?? l.destination.rtDateTime) != null &&
@@ -113,9 +113,7 @@ class TripResultWidget extends StatelessWidget {
                           Text(
                               trip.leg.last.destination.dateTime.time() +
                                   getDelayString(getTripLocationDelay(trip.leg.last.destination)),
-                              style: trip.leg.last.cancelled
-                                  ? const TextStyle(color: Colors.red, decoration: TextDecoration.lineThrough)
-                                  : null)
+                              style: trip.leg.last.cancelled ? cancelledTextStyle : null)
                         ]),
                         if (notes.isNotEmpty || warnings.isNotEmpty) const SizedBox(height: 8),
                         Wrap(
@@ -279,7 +277,7 @@ class TripResultWidget extends StatelessWidget {
 
 class TripTimeWidget extends StatefulWidget {
   final Duration _tripTime;
-  final Leg _leg;
+  final Leg? _leg;
 
   const TripTimeWidget(this._tripTime, this._leg, {Key? key}) : super(key: key);
 
@@ -311,7 +309,7 @@ class _TripTimeWidgetState extends State<TripTimeWidget> {
       const Icon(Icons.access_time),
       const SizedBox(width: 5),
       highlightFirstPart(getDurationString(widget._tripTime) +
-          getTripCountdown(widget._leg.cancelled ? null : widget._leg.origin.getDateTime())),
+          getTripCountdown(widget._leg?.cancelled == true ? null : widget._leg?.origin.getDateTime())),
     ]);
   }
 }

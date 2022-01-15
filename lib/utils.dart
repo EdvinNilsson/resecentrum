@@ -20,7 +20,7 @@ String getCountdown(Departure departure) {
   if (minutesLeft.abs() > 100) {
     return minutesLeft.abs() >= 5940 ? '${timeLeft.inDays}d' : '${timeLeft.hoursRounded()}h';
   }
-  if (!realtime && minutesLeft >= 0) return 'ca $minutesLeft';
+  if (!realtime && minutesLeft > 0) return 'ca $minutesLeft';
   if (realtime && (minutesLeft == 0 || minutesLeft == -1)) return 'nu';
   return minutesLeft.toString();
 }

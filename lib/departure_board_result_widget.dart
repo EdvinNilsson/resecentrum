@@ -139,14 +139,12 @@ Future<void> getDepartureBoard(StreamController streamController, int stopId, Da
     if (departureBoardOptions.includeArrivalOptions.includeArrivals) {
       var arrivals = await arrivalsRequest;
 
-      if (departureBoardOptions.includeArrivalOptions.includeArrivals) {
-        arrivals = await arrivalsRequest ?? arrivals;
-
-        if (arrivals != null) {
-          arrivals = arrivals.where(
-              (a) => !result.any((d) => d.journeyId == a.journeyId) && a.dateTime.isBefore(result.last.dateTime));
-          result.insertAll(0, arrivals);
-        }
+      if (arrivals != null) {
+        arrivals = arrivals.where((a) =>
+            !result.any((d) => d.journeyId == a.journeyId) &&
+            a.dateTime.isBefore(result.last.dateTime) &&
+            !(dateTime == null && a.dateTime.isBefore(DateTime.now())));
+        result.insertAll(0, arrivals);
       }
     }
 
