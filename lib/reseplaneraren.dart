@@ -25,24 +25,34 @@ class Reseplaneraren {
       Dio(BaseOptions(baseUrl: 'https://api.vasttrafik.se/ts/v1', connectTimeout: 10000, receiveTimeout: 10000));
 
   Future<T?> _callApi<T>(String path, Map<String, dynamic>? queryParameters, T Function(Response) generator,
-      {bool secondTry = false, Dio? altDio}) async {
-    try {
-      _accessToken ??= await _authorize();
-      if (_accessToken == null) return null;
-      var result = await (altDio ?? _dio).get(path,
-          queryParameters: queryParameters, options: Options(headers: {'Authorization': 'Bearer $_accessToken'}));
-      return generator(result);
-    } catch (e) {
-      if (e is DioError && !secondTry) {
-        if (e.response?.statusCode == 401) {
-          _accessToken = await _authorize();
-          return _callApi(path, queryParameters, generator, secondTry: true);
+      {bool secondTry = false, Dio? altDio, Duration retry = const Duration(seconds: 1, milliseconds: 500)}) async {
+    _accessToken ??= await _authorize();
+    if (_accessToken == null) return null;
+    var result = (altDio ?? _dio).get(path,
+        queryParameters: queryParameters, options: Options(headers: {'Authorization': 'Bearer $_accessToken'}));
+    if (secondTry) {
+      return result.then<T?>(generator).catchError((_) => null);
+    } else {
+      return Future.any([
+        result.then(generator),
+        () async {
+          bool complete = false;
+          result.whenComplete(() => complete = true);
+          await Future.delayed(retry);
+          return !complete ? _callApi(path, queryParameters, generator, secondTry: true) : null;
+        }()
+      ]).catchError((e, stackTrace) async {
+        if (e is DioError && !secondTry) {
+          if (e.response?.statusCode == 401) {
+            _accessToken = await _authorize();
+            return _callApi(path, queryParameters, generator, secondTry: true);
+          }
         }
-      }
-      if (kDebugMode) {
-        print(e);
-      }
-      return null;
+        if (kDebugMode) {
+          print(e);
+          print(stackTrace);
+        }
+      });
     }
   }
 
@@ -183,7 +193,7 @@ class Reseplaneraren {
       var data = result.data['TripList'];
       var trips = forceList(data['Trip']);
       return trips.map((trip) => Trip(trip));
-    });
+    }, retry: const Duration(seconds: 5));
   }
 
   Future<Iterable<Location>?> getLocationByName(String input, {bool onlyStops = false}) async {
