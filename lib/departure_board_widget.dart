@@ -37,7 +37,7 @@ class DepartureBoardWidget extends StatelessWidget {
                     onlyStops: true,
                     suffixIcon: IconButton(
                         onPressed: () async {
-                          _stopInput.text = 'Nuvarande position';
+                          _stopInput.text = 'Hittar närliggande hållplats...';
                           Location? location = await getLocation(onlyStops: true);
                           if (location == null) noLocationFound(context, onlyStops: true);
                           _stopFieldController.setLocation(location ?? _stopFieldController.location);
@@ -119,6 +119,7 @@ class DepartureBoardWidget extends StatelessWidget {
                             onlyStops: true,
                             onTap: (location) async {
                               _stopFieldController.setLocation(location);
+                              _directionFieldController.clearLocation();
                               await Navigator.push(context, MaterialPageRoute(builder: (context) {
                                 return DepartureBoardResultWidget(
                                     location as StopLocation,

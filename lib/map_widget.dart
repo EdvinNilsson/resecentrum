@@ -344,7 +344,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   bool _isOutdated(VehiclePosition vehiclePosition) {
     if (!vehiclePosition.dataStillRelevant) return true;
     Duration diff = DateTime.now().difference(vehiclePosition.updatedAt);
-    bool still = vehiclePosition.atStop || vehiclePosition.speed < 1;
+    bool still = vehiclePosition.atStop || vehiclePosition.speed < 10;
     return diff > Duration(minutes: still ? 5 : 1);
   }
 
@@ -421,7 +421,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
         (await reseplaneraren.getLocationNearbyStops(coord.latitude, coord.longitude, maxNo: 1000, maxDist: 3000))
             ?.where((stop) => stop.isStopArea)
             .toSet();
-    if (nearbyStops == null) return;
+    if (nearbyStops == null || !mounted) return;
 
     String color = Theme.of(context).primaryColor.toHexCode();
 
@@ -512,6 +512,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     showModalBottomSheet(
         context: context,
         isScrollControlled: true,
+        backgroundColor: cardBackgroundColor(context),
         builder: (context) {
           return DraggableScrollableSheet(
               expand: false,

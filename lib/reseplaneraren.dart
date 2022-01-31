@@ -791,7 +791,7 @@ class TSLine {
 class TSStop {
   late String? stopAreaShortName;
   late String? stopAreaName;
-  late String? stopAreaGid;
+  late int? stopAreaGid;
   late String name;
   late int gid;
   late String? shortName;
@@ -801,7 +801,7 @@ class TSStop {
   TSStop(dynamic data) {
     stopAreaShortName = data['stopAreaShortName'];
     stopAreaName = data['stopAreaName'];
-    stopAreaGid = data['stopAreaGid'];
+    stopAreaGid = int.parse(data['stopAreaGid']);
     name = data['name'];
     gid = int.parse(data['gid']);
     shortName = data['shortName'];

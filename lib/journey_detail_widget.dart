@@ -49,7 +49,7 @@ class JourneyDetailWidget extends StatelessWidget {
                       journeyDetail != null
                           ? MapJourney(journeyDetail: journeyDetail)
                           : MapJourney(journeyDetailRef: journeyDetailRef)
-                    ]); //MapJourney(Right(journeyDetail!)) : MapJourney(Left(journeyDetailRef))]);
+                    ]);
                   }));
                 },
                 icon: const Icon(Icons.map))
@@ -83,8 +83,8 @@ class JourneyDetailWidget extends StatelessWidget {
   }
 }
 
-bool _isAffectingThisDirection(TrafficSituation ts, Iterable<int> stopIds) {
-  if (ts.affectedStopPoints.isEmpty) return true;
+bool _isAffectingThisDirection(TrafficSituation ts, Iterable<int> stopIds, Direction direction) {
+  if (ts.affectedStopPoints.isEmpty || ts.title.contains('mot ${direction.direction}')) return true;
   return ts.affectedStopPoints.any((s) => stopIds.contains(s.gid));
 }
 
@@ -101,7 +101,7 @@ Future<JourneyDetailWithTrafficSituations?> getJourneyDetail(String journeyDetai
     var filteredLineTs = (await lineTs)?.where((ts) =>
         isPresent(
             ts.startTime, ts.endTime, journeyDetail.stop.first.getDateTime(), journeyDetail.stop.last.getDateTime()) &&
-        _isAffectingThisDirection(ts, stopIds));
+        _isAffectingThisDirection(ts, stopIds, journeyDetail.direction.last));
     filteredLineTs = filteredLineTs?.toList()
       ?..sort((a, b) => getNotePriority(a.severity).compareTo(getNotePriority(b.severity)));
     var severeTs =
@@ -113,7 +113,7 @@ Future<JourneyDetailWithTrafficSituations?> getJourneyDetail(String journeyDetai
     filteredLineTs?.forEach((ts) {
       if (ts.affectedStopPoints.length >= stopIds.length) return;
       for (var stop in ts.affectedStopPoints) {
-        int i = stopIds.indexWhere((id) => id == stop.gid);
+        int i = stopIds.indexWhere((id) => stopAreaFromStopId(id) == stop.stopAreaGid);
         if (i < 0) continue;
         if (stopNoteIcons[i] == null) {
           stopNoteIcons[i] = ts.severity;

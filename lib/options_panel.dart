@@ -272,7 +272,7 @@ abstract class _OptionsPanelState<T extends StatefulWidget> extends State<T> {
 
   int? _parseChangeMargin(String text) {
     int? minutes = int.tryParse(text);
-    return minutes != null && minutes > 0 ? minutes : null;
+    return minutes != null && minutes > 0 && minutes <= 600 ? minutes : null;
   }
 
   Future<int?> _customChangeMargin() async {

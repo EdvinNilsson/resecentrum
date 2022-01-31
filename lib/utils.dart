@@ -81,7 +81,7 @@ String getTripCountdown(DateTime? departure) {
   if (departure == null) return '';
   var timeLeft = departure.difference(DateTime.now());
   var minutesLeft = timeLeft.minutesRounded();
-  if (minutesLeft > 86400) return '';
+  if (minutesLeft.abs() > 1440) return '';
   if (minutesLeft < -1) return ', avgått';
   if (minutesLeft > 0) return ', om ${getDurationString(timeLeft)}';
   return ', nu';
@@ -621,6 +621,12 @@ Future<Location?> getLocationFromCoord(double latitude, double longitude,
   Future<CoordLocation?>? addressReq;
   if (!onlyStops) addressReq = reseplaneraren.getLocationNearbyAddress(latitude, longitude);
   var stop = (await stopReq)?.firstWhereOrNull((stop) => stop.isStopArea);
+  // If no stop area was found, convert a stop point into a stop area.
+  if (stop == null) {
+    stop = (await stopReq)?.firstWhereOrNull((stop) => stop.id >= 9022000000000000);
+    stop?.id = stopAreaFromStopId(stop.id);
+    stop?.track = null;
+  }
   if (stop != null) return stop;
   if (!onlyStops) {
     var address = await addressReq;
