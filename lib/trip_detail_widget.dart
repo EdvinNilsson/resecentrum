@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:resecentrum/options_panel.dart';
 
 import 'extensions.dart';
 import 'journey_detail_widget.dart';
@@ -11,8 +12,9 @@ import 'utils.dart';
 
 class TripDetailWidget extends StatelessWidget {
   final Trip _trip;
+  final ChangeMarginOptions _changeMarginOptions;
 
-  TripDetailWidget(this._trip, {Key? key}) : super(key: key) {
+  TripDetailWidget(this._trip, this._changeMarginOptions, {Key? key}) : super(key: key) {
     _streamController.add(_trip);
   }
 
@@ -70,7 +72,6 @@ class TripDetailWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var widgets = _legWidgets(context);
     return Scaffold(
         appBar: AppBar(
           title: tripTitle(_trip.leg.first.origin.name, _trip.leg.last.destination.name),
@@ -91,15 +92,21 @@ class TripDetailWidget extends StatelessWidget {
               stream: _streamController.stream,
               builder: (context, tripSnapshot) {
                 if (tripSnapshot.connectionState == ConnectionState.waiting) return loadingPage();
-                return ListView.separated(
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
-                    itemCount: widgets.length,
-                    itemBuilder: (context, i) {
-                      return widgets.elementAt(i);
-                    },
-                    separatorBuilder: (context, index) {
-                      return const Divider();
-                    });
+                var widgets = _legWidgets(context);
+                return CustomScrollView(
+                  slivers: [
+                    SliverSafeArea(
+                      sliver: SliverPadding(
+                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+                        sliver: SeparatedSliverList(
+                          itemCount: widgets.length,
+                          itemBuilder: (context, i) => widgets.elementAt(i),
+                          separatorBuilder: (context, i) => const Divider(),
+                        ),
+                      ),
+                    )
+                  ],
+                );
               },
             )));
   }
@@ -141,14 +148,15 @@ class TripDetailWidget extends StatelessWidget {
                   leg.journeyNumber);
             }));
           },
-          onLongPress: () async {
-            if (leg.journeyDetailRef == null) return;
-            await Navigator.push(context, MaterialPageRoute(builder: (context) {
-              var journeys = _mapJourneys;
-              journeys[i].focus = true;
-              return MapWidget(journeys);
-            }));
-          },
+          onLongPress: leg.journeyDetailRef == null
+              ? null
+              : () async {
+                  await Navigator.push(context, MaterialPageRoute(builder: (context) {
+                    var journeys = _mapJourneys;
+                    journeys[i].focus = true;
+                    return MapWidget(journeys);
+                  }));
+                },
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: leg.type == 'WALK'
@@ -212,25 +220,67 @@ class TripDetailWidget extends StatelessWidget {
         ? after.origin.getDateTime().difference(before.destination.getDateTime())
         : end.difference(start);
 
-    IconData? icon = Icons.directions_walk;
-    if (transfer) icon = Icons.transfer_within_a_station;
-    if ((transfer || walkBetweenStops) && duration <= const Duration(minutes: 0)) icon = Icons.warning;
+    IconData icon = transfer ? Icons.transfer_within_a_station : Icons.directions_walk;
 
-    return Row(
+    Future<double?> walkDistance = _getWalkDistance(leg);
+
+    return Column(
       children: [
-        Container(
-            constraints: const BoxConstraints(minWidth: 64),
-            margin: const EdgeInsets.fromLTRB(5, 0, 10, 0),
-            child: iconAndText(icon, text, gap: 8)),
-        Text(getDurationString(duration), style: TextStyle(color: Theme.of(context).hintColor)),
-        FutureBuilder<double?>(
-            future: _getWalkDistance(leg),
-            builder: (context, distance) {
-              if (!distance.hasData || distance.data == null) return Container();
-              return Text(', ${distance.data!.round()} m', style: TextStyle(color: Theme.of(context).hintColor));
-            })
+        Row(
+          children: [
+            Container(
+                constraints: const BoxConstraints(minWidth: 64),
+                margin: const EdgeInsets.fromLTRB(5, 0, 10, 0),
+                child: FutureBuilder<double?>(
+                    future: walkDistance,
+                    builder: (context, distance) {
+                      var walkSpeed = _walkSpeed(distance.data, duration);
+                      if (walkSpeed > 6 && !transfer) icon = Icons.directions_run;
+                      if (walkSpeed > 15 || walkSpeed < 0) icon = Icons.warning;
+                      return iconAndText(icon, text, gap: 10);
+                    })),
+            Text(getDurationString(duration), style: TextStyle(color: Theme.of(context).hintColor)),
+            FutureBuilder<double?>(
+                future: walkDistance,
+                builder: (context, distance) {
+                  if (!distance.hasData || distance.data == null) return Container();
+                  return Text(', ${distance.data!.round()} m', style: TextStyle(color: Theme.of(context).hintColor));
+                })
+          ],
+        ),
+        if (before != null && after != null)
+          FutureBuilder<Widget?>(
+            future: _walkValidation(walkDistance, duration, transfer),
+            builder: (context, result) {
+              if (!result.hasData || result.data == null) return Container();
+              return Column(
+                children: [
+                  const Divider(),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(5, 0, 0, 0),
+                    child: result.data!,
+                  ),
+                ],
+              );
+            },
+          ),
       ],
     );
+  }
+
+  double _walkSpeed(double? walkDistance, Duration duration) {
+    return 3.6 * (walkDistance ?? 0) / duration.inSeconds; // km/h
+  }
+
+  Future<Widget?> _walkValidation(Future<double?> walkDistance, Duration duration, bool transfer) async {
+    var walkSpeed = _walkSpeed(await walkDistance, duration);
+    const String text = 'Risk för att missa anslutningen';
+    if (duration < const Duration(minutes: 0) || walkSpeed > 10) {
+      return iconAndText(Icons.warning, text, gap: 10, iconColor: Colors.red);
+    }
+    if (walkSpeed > 6 || duration <= Duration(minutes: (_changeMarginOptions.minutes ?? 5) ~/ 2)) {
+      return iconAndText(Icons.error, text, gap: 10, iconColor: Colors.orange);
+    }
   }
 
   Widget _stopHeader(TripLocation location) {
