@@ -160,7 +160,8 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
         if (points[i].squaredDistanceTo(point) < touchRadius) {
           Stop stop = _stops[i].item;
           DateTime? dateTime = stop.getDateTime().isAfter(DateTime.now()) ? stop.getDateTime() : null;
-          _showDepartureSheet(stopRowFromStop(stop), stop.id, dateTime: dateTime);
+          _showDepartureSheet(stopRowFromStop(stop), stopAreaFromStopId(stop.id), stop.lat, stop.lon,
+              dateTime: dateTime);
           return;
         }
       }
@@ -170,12 +171,16 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
       for (int i = 0; i < points.length; i++) {
         if (points[i].squaredDistanceTo(point) < touchRadius) {
           var stopLocation = _stopLocations.elementAt(i);
-          _showDepartureSheet(highlightFirstPart(stopLocation.name), stopLocation.id,
-              extraSliver: SliverToBoxAdapter(
-                  child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 5, 10, 0),
-                child: _locationOptionsWidget(stopLocation),
-              )));
+          _showDepartureSheet(
+              highlightFirstPart(stopLocation.name), stopLocation.id, stopLocation.lat, stopLocation.lon,
+              extraSliver: SliverSafeArea(
+                bottom: false,
+                sliver: SliverToBoxAdapter(
+                    child: Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 5, 10, 0),
+                  child: _locationOptionsWidget(stopLocation),
+                )),
+              ));
           return;
         }
       }
@@ -497,7 +502,8 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
         });
   }
 
-  void _showDepartureSheet(Widget header, int stopId, {DateTime? dateTime, Widget? extraSliver}) {
+  void _showDepartureSheet(Widget header, int stopId, double lat, double long,
+      {DateTime? dateTime, Widget? extraSliver}) {
     final StreamController<DepartureBoardWithTrafficSituations?> streamController = StreamController();
     _updateDepartureBoard(streamController, stopId, dateTime);
 
@@ -531,16 +537,21 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
                         controller: scrollController,
                         slivers: [
                           appBar,
-                          departureBoardList(departureBoardWithTs.data!.departures, bgLuminance,
-                              onTap: (context, departure) {
-                            Navigator.pop(context);
-                            _showJourneyDetailSheet(departure);
-                          }, onLongPress: (context, departure) {
-                            Navigator.pop(context);
-                            _showDepartureOnMap(departure, null);
-                          }),
-                          trafficSituationList(departureBoardWithTs.data!.ts,
-                              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10), showAffectedStop: false)
+                          SliverSafeArea(
+                            sliver: departureBoardList(departureBoardWithTs.data!.departures, bgLuminance, lat, long,
+                                onTap: (context, departure) {
+                              Navigator.pop(context);
+                              _showJourneyDetailSheet(departure);
+                            }, onLongPress: (context, departure) {
+                              Navigator.pop(context);
+                              _showDepartureOnMap(departure, null);
+                            }),
+                            bottom: false,
+                          ),
+                          SliverSafeArea(
+                            sliver: trafficSituationList(departureBoardWithTs.data!.ts,
+                                padding: const EdgeInsets.fromLTRB(10, 0, 10, 10), showAffectedStop: false),
+                          )
                         ].insertIf(extraSliver != null, 1, extraSliver));
                   },
                 );

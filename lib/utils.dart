@@ -6,23 +6,43 @@ import 'package:maplibre_gl/mapbox_gl.dart';
 
 import 'extensions.dart';
 import 'reseplaneraren.dart';
+import 'vehicle_positions_service.dart';
 
 String getDelayString(int? delay) {
   if (delay == null) return '';
   return delay < 0 ? delay.toString() : '+' + delay.toString();
 }
 
-String getCountdown(Departure departure) {
-  if (departure.cancelled) return 'inställd';
+Future<bool> hasDeparted(Departure departure, double lat, double long) async {
+  var pos = await vehiclePositionsService.getPositions([departure.journeyId]);
+  var vehicle = pos?.firstWhereOrNull((v) => v.journeyId == departure.journeyId);
+  if (vehicle != null) {
+    var distance = Geolocator.distanceBetween(vehicle.lat, vehicle.long, lat, long);
+    if ((distance > 150 || vehicle.speed > 20) &&
+        vehicle.updatedAt.difference(DateTime.now()) < const Duration(minutes: 1)) return true;
+  }
+  return false;
+}
+
+CountdownResponse getCountdown(Departure departure) {
+  if (departure.cancelled) return CountdownResponse('inställd');
   var realtime = departure.rtDateTime != null;
   var timeLeft = departure.getDateTime().difference(DateTime.now());
   var minutesLeft = timeLeft.minutesRounded();
   if (minutesLeft.abs() > 100) {
-    return minutesLeft.abs() >= 5940 ? '${timeLeft.inDays}d' : '${timeLeft.hoursRounded()}h';
+    return CountdownResponse(minutesLeft.abs() >= 5940 ? '${timeLeft.inDays}d' : '${timeLeft.hoursRounded()}h');
   }
-  if (!realtime && minutesLeft > 0) return 'ca $minutesLeft';
-  if (realtime && (minutesLeft == 0 || minutesLeft == -1)) return 'nu';
-  return minutesLeft.toString();
+  bool needExtraCheck = !realtime && minutesLeft >= -1 && minutesLeft <= 5;
+  if (!realtime && minutesLeft > 0) return CountdownResponse('ca $minutesLeft', needExtraCheck);
+  if (minutesLeft == 0 || minutesLeft == -1) return CountdownResponse('nu', needExtraCheck);
+  return CountdownResponse(minutesLeft.toString(), needExtraCheck);
+}
+
+class CountdownResponse {
+  String text;
+  bool needExtraCheck;
+
+  CountdownResponse(this.text, [this.needExtraCheck = false]);
 }
 
 int? getDepartureDelay(Departure departure) {
@@ -613,6 +633,8 @@ void noLocationFound(BuildContext context, {bool onlyStops = false}) {
 }
 
 String lineIdFromJourneyId(String journeyId) => '${journeyId.substring(0, 3)}1${journeyId.substring(4, 11)}00000';
+
+int stopAreaFromStopId(int stopId) => stopId - stopId % 1000 - 1000000000000;
 
 class SeparatedSliverList extends SliverList {
   SeparatedSliverList({
