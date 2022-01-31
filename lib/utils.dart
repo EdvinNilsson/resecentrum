@@ -278,7 +278,9 @@ Widget lineIcon(String sname, Color fgColor, Color bgColor, double bgLuminance, 
       constraints: const BoxConstraints(minWidth: 30),
       decoration: lineBoxDecoration(bgColor, fgColor, bgLuminance, context),
       child: Text(
-        isTrainType(type) ? '$name $journeyNumber' : sname,
+        isTrainType(type)
+            ? '${(name.split(' ').where((t) => t != 'TÅG' && int.tryParse(t) == null)).join(' ')} $journeyNumber'
+            : sname,
         style: TextStyle(color: fgColor, fontWeight: FontWeight.bold),
         textAlign: TextAlign.center,
       ),

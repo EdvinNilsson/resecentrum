@@ -472,7 +472,7 @@ class Departure {
     bgColor = fromHex(data['bgColor']);
     stroke = data['stroke'];
     rtDateTime = parseDateTime(data['rtDate'], data['rtTime']);
-    name = data['name'].replaceFirst(' TÅG', '');
+    name = data['name'];
     night = data['night'] == 'true';
     stopId = int.parse(data['stopid']);
     journeyId = data['journeyid'];
