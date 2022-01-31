@@ -30,130 +30,132 @@ class TripWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
-        children: [
-          Container(
-              margin: const EdgeInsets.fromLTRB(10, 10, 10, 1),
-              child: Column(children: [
-                LocationField(fromFieldController, _fromInput, 'Från',
-                    focusNode: _fromFocusNode,
-                    suffixIcon: IconButton(
-                        onPressed: () async {
-                          _fromInput.text = 'Nuvarande position';
-                          Location? location = await getLocation(stopMaxDist: 100);
-                          if (location == null) noLocationFound(context);
-                          fromFieldController.setLocation(location ?? fromFieldController.location);
-                        },
-                        icon: const Icon(Icons.my_location))),
-                LocationField(toFieldController, _toInput, 'Till',
-                    focusNode: _toFocusNode,
-                    suffixIcon: IconButton(
-                        onPressed: () {
-                          var temp = fromFieldController.location;
-                          fromFieldController.setLocation(toFieldController.location);
-                          toFieldController.setLocation(temp);
-                        },
-                        icon: const Icon(Icons.swap_vert))),
-              ])),
-          Expanded(
-            child: DefaultTabController(
-              initialIndex: _index,
-              length: 2,
-              child: NestedScrollView(
-                headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
-                  return <Widget>[
-                    SliverToBoxAdapter(
-                      child: Material(
-                        child: Container(
-                          margin: const EdgeInsets.fromLTRB(10, 5, 10, 0),
-                          child: Column(
-                            children: [
-                              SegmentedControl(const ['Nu', 'Avgång', 'Ankomst'],
-                                  controller: _segmentedControlController),
-                              DateTimeSelector(_segmentedControlController, _dateTimeSelectorController),
-                              TripOptionsPanel(_tripOptions),
-                            ],
+      body: SafeArea(
+        child: Column(
+          children: [
+            Container(
+                margin: const EdgeInsets.fromLTRB(10, 10, 10, 1),
+                child: Column(children: [
+                  LocationField(fromFieldController, _fromInput, 'Från',
+                      focusNode: _fromFocusNode,
+                      suffixIcon: IconButton(
+                          onPressed: () async {
+                            _fromInput.text = 'Hittar din position...';
+                            Location? location = await getLocation(stopMaxDist: 100);
+                            if (location == null) noLocationFound(context);
+                            fromFieldController.setLocation(location ?? fromFieldController.location);
+                          },
+                          icon: const Icon(Icons.my_location))),
+                  LocationField(toFieldController, _toInput, 'Till',
+                      focusNode: _toFocusNode,
+                      suffixIcon: IconButton(
+                          onPressed: () {
+                            var temp = fromFieldController.location;
+                            fromFieldController.setLocation(toFieldController.location);
+                            toFieldController.setLocation(temp);
+                          },
+                          icon: const Icon(Icons.swap_vert))),
+                ])),
+            Expanded(
+              child: DefaultTabController(
+                initialIndex: _index,
+                length: 2,
+                child: NestedScrollView(
+                  headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
+                    return <Widget>[
+                      SliverToBoxAdapter(
+                        child: Material(
+                          child: Container(
+                            margin: const EdgeInsets.fromLTRB(10, 5, 10, 0),
+                            child: Column(
+                              children: [
+                                SegmentedControl(const ['Nu', 'Avgång', 'Ankomst'],
+                                    controller: _segmentedControlController),
+                                DateTimeSelector(_segmentedControlController, _dateTimeSelectorController),
+                                TripOptionsPanel(_tripOptions),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    SliverOverlapAbsorber(
-                      handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
-                      sliver: SliverAppBar(
-                        backgroundColor: Theme.of(context).canvasColor,
-                        pinned: true,
-                        titleSpacing: 10,
-                        forceElevated: true,
-                        automaticallyImplyLeading: false,
-                        title: SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(onPressed: () => _onSearch(context), child: const Text('Sök')),
+                      SliverOverlapAbsorber(
+                        handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+                        sliver: SliverAppBar(
+                          backgroundColor: Theme.of(context).canvasColor,
+                          pinned: true,
+                          titleSpacing: 10,
+                          forceElevated: true,
+                          automaticallyImplyLeading: false,
+                          title: SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(onPressed: () => _onSearch(context), child: const Text('Sök')),
+                          ),
+                          bottom: TabBar(
+                            indicatorColor: Theme.of(context).primaryColor,
+                            labelColor: Theme.of(context).hintColor,
+                            tabs: const [
+                              Tab(icon: Text('Resvägar')),
+                              Tab(icon: Text('Favoritplatser')),
+                            ],
+                          ),
                         ),
-                        bottom: TabBar(
-                          indicatorColor: Theme.of(context).primaryColor,
-                          labelColor: Theme.of(context).hintColor,
-                          tabs: const [
-                            Tab(icon: Text('Resvägar')),
-                            Tab(icon: Text('Favoritplatser')),
-                          ],
-                        ),
+                      )
+                    ];
+                  },
+                  body: TabBarView(
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
+                      Builder(
+                        builder: (BuildContext context) {
+                          _index = 0;
+                          return CustomScrollView(
+                            key: const PageStorageKey(0),
+                            slivers: [
+                              SliverOverlapInjector(handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context)),
+                              TripHistoryList((trip) {
+                                fromFieldController.setLocation(trip.from);
+                                toFieldController.setLocation(trip.to);
+                                _tripOptions.viaFieldController.setLocation(trip.via);
+                                _onSearch(context);
+                              }, key: _tripHistoryKey)
+                            ],
+                          );
+                        },
                       ),
-                    )
-                  ];
-                },
-                body: TabBarView(
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: [
-                    Builder(
-                      builder: (BuildContext context) {
-                        _index = 0;
+                      Builder(builder: (BuildContext context) {
+                        _index = 1;
                         return CustomScrollView(
-                          key: const PageStorageKey(0),
+                          key: const PageStorageKey(1),
                           slivers: [
                             SliverOverlapInjector(handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context)),
-                            TripHistoryList((trip) {
-                              fromFieldController.setLocation(trip.from);
-                              toFieldController.setLocation(trip.to);
-                              _tripOptions.viaFieldController.setLocation(trip.via);
-                              _onSearch(context);
-                            }, key: _tripHistoryKey)
+                            FavoritePlacesList(
+                                onTap: (location) {
+                                  if (!_toFocusNode.hasFocus) {
+                                    fromFieldController.setLocation(location);
+                                    FocusScope.of(context).requestFocus(_toFocusNode);
+                                  } else {
+                                    toFieldController.setLocation(location);
+                                    FocusScope.of(context).requestFocus(_fromFocusNode);
+                                  }
+                                },
+                                onLongPress: (location) {
+                                  if (_toFocusNode.hasFocus) {
+                                    fromFieldController.setLocation(location);
+                                  } else {
+                                    toFieldController.setLocation(location);
+                                  }
+                                },
+                                key: _favoritePlacesKey),
                           ],
                         );
-                      },
-                    ),
-                    Builder(builder: (BuildContext context) {
-                      _index = 1;
-                      return CustomScrollView(
-                        key: const PageStorageKey(1),
-                        slivers: [
-                          SliverOverlapInjector(handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context)),
-                          FavoritePlacesList(
-                              onTap: (location) {
-                                if (!_toFocusNode.hasFocus) {
-                                  fromFieldController.setLocation(location);
-                                  FocusScope.of(context).requestFocus(_toFocusNode);
-                                } else {
-                                  toFieldController.setLocation(location);
-                                  FocusScope.of(context).requestFocus(_fromFocusNode);
-                                }
-                              },
-                              onLongPress: (location) {
-                                if (_toFocusNode.hasFocus) {
-                                  fromFieldController.setLocation(location);
-                                } else {
-                                  toFieldController.setLocation(location);
-                                }
-                              },
-                              key: _favoritePlacesKey),
-                        ],
-                      );
-                    }),
-                  ],
+                      }),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

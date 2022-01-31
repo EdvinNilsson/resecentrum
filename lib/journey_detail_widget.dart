@@ -63,11 +63,18 @@ class JourneyDetailWidget extends StatelessWidget {
               if (!journeyDetailWithTs.hasData) return errorPage(() => {_updateJourneyDetail()});
               return CustomScrollView(
                 slivers: [
-                  trafficSituationList(journeyDetailWithTs.data!.importantTs,
-                      boldTitle: true, padding: const EdgeInsets.fromLTRB(10, 10, 10, 0)),
-                  journeyDetailList(journeyDetailWithTs.data!.journeyDetail, journeyDetailWithTs.data!.stopNoteIcons),
-                  trafficSituationList(journeyDetailWithTs.data!.normalTs,
-                      padding: const EdgeInsets.fromLTRB(10, 0, 10, 10)),
+                  SliverSafeArea(
+                      sliver: trafficSituationList(journeyDetailWithTs.data!.importantTs,
+                          boldTitle: true, padding: const EdgeInsets.fromLTRB(10, 10, 10, 0)),
+                      bottom: false),
+                  SliverSafeArea(
+                      sliver: journeyDetailList(
+                          journeyDetailWithTs.data!.journeyDetail, journeyDetailWithTs.data!.stopNoteIcons),
+                      bottom: false),
+                  SliverSafeArea(
+                    sliver: trafficSituationList(journeyDetailWithTs.data!.normalTs,
+                        padding: const EdgeInsets.fromLTRB(10, 0, 10, 10)),
+                  ),
                 ],
               );
             },
@@ -143,48 +150,46 @@ RenderObjectWidget journeyDetailList(JourneyDetail journeyDetail, Iterable<Icon?
 
   return SliverPadding(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-    sliver: SliverSafeArea(
-      sliver: SeparatedSliverList(
-        itemCount: journeyDetail.stop.length,
-        separatorBuilder: (context, i) => const Divider(height: 0),
-        itemBuilder: (context, i) {
-          var stop = journeyDetail.stop.elementAt(i);
-          var row = stopRowFromStop(stop,
-              alightingOnly: stop.rtDepTime == null &&
-                  stop.rtArrTime != null &&
-                  !journeyDetail.journeyId.map((e) => e.routeIdxTo).contains(stop.routeIdx),
-              boardingOnly: stop.rtDepTime != null &&
-                  stop.rtArrTime == null &&
-                  !journeyDetail.journeyId.map((e) => e.routeIdxFrom).contains(stop.routeIdx) &&
-                  journeyDetail.stop.elementAt(i - 1).rtDepTime != null,
-              noteIcon: stopNoteIcons.elementAt(i),
-              constraints: const BoxConstraints(minHeight: 32));
-          if ((stop.rtDepTime ?? stop.rtArrTime) == null) {
-            row = Opacity(opacity: 0.8, child: row);
+    sliver: SeparatedSliverList(
+      itemCount: journeyDetail.stop.length,
+      separatorBuilder: (context, i) => const Divider(height: 0),
+      itemBuilder: (context, i) {
+        var stop = journeyDetail.stop.elementAt(i);
+        var row = stopRowFromStop(stop,
+            alightingOnly: stop.rtDepTime == null &&
+                stop.rtArrTime != null &&
+                !journeyDetail.journeyId.map((e) => e.routeIdxTo).contains(stop.routeIdx),
+            boardingOnly: stop.rtDepTime != null &&
+                stop.rtArrTime == null &&
+                !journeyDetail.journeyId.map((e) => e.routeIdxFrom).contains(stop.routeIdx) &&
+                journeyDetail.stop.elementAt(i - 1).rtDepTime != null,
+            noteIcon: stopNoteIcons.elementAt(i),
+            constraints: const BoxConstraints(minHeight: 32));
+        if ((stop.rtDepTime ?? stop.rtArrTime) == null) {
+          row = Opacity(opacity: 0.8, child: row);
+        }
+        if (lineChanges.isNotEmpty) {
+          int j = lineChanges.indexOf(stop.routeIdx);
+          if (j >= 0 || i == 0) {
+            return Column(children: [
+              Padding(
+                  padding: const EdgeInsets.all(15),
+                  child: Text(
+                      (StringBuffer(i == 0 ? 'Börjar' : 'Fortsätter')
+                            ..write(' som linje ')
+                            ..write(getValueAtRouteIdx(journeyDetail.journeyName, stop.routeIdx).name)
+                            ..write(' mot ')
+                            ..write(getValueAtRouteIdx(journeyDetail.direction, stop.routeIdx).direction)
+                            ..write('.'))
+                          .toString(),
+                      textAlign: TextAlign.center)),
+              const Divider(height: 0),
+              row
+            ]);
           }
-          if (lineChanges.isNotEmpty) {
-            int j = lineChanges.indexOf(stop.routeIdx);
-            if (j >= 0 || i == 0) {
-              return Column(children: [
-                Padding(
-                    padding: const EdgeInsets.all(15),
-                    child: Text(
-                        (StringBuffer(i == 0 ? 'Börjar' : 'Fortsätter')
-                              ..write(' som linje ')
-                              ..write(getValueAtRouteIdx(journeyDetail.journeyName, stop.routeIdx).name)
-                              ..write(' mot ')
-                              ..write(getValueAtRouteIdx(journeyDetail.direction, stop.routeIdx).direction)
-                              ..write('.'))
-                            .toString(),
-                        textAlign: TextAlign.center)),
-                const Divider(height: 0),
-                row
-              ]);
-            }
-          }
-          return row;
-        },
-      ),
+        }
+        return row;
+      },
     ),
   );
 }

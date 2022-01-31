@@ -60,26 +60,30 @@ class LocationSearcherWidget extends StatelessWidget {
           if (!option.hasData) return errorPage(() => _getSuggestions(_textController.text));
           return CustomScrollView(
             slivers: [
-              SeparatedSliverList(
-                itemCount: option.data!._favorites.length,
-                itemBuilder: (context, i) {
-                  var location = option.data!._favorites.elementAt(i);
-                  return SuggestionWidget(location, () => _onSelected(location));
-                },
-                separatorBuilder: (context, index) {
-                  return const Divider(height: 1);
-                },
-              ),
-              const SliverToBoxAdapter(child: Divider(height: 1)),
-              SeparatedSliverList(
-                itemCount: option.data!._online.length,
-                itemBuilder: (context, i) {
-                  var location = option.data!._online.elementAt(i);
-                  return SuggestionWidget(location, () => _onSelected(location));
-                },
-                separatorBuilder: (context, index) {
-                  return const Divider(height: 1);
-                },
+              SliverSafeArea(
+                  sliver: SeparatedSliverList(
+                    itemCount: option.data!._favorites.length,
+                    itemBuilder: (context, i) {
+                      var location = option.data!._favorites.elementAt(i);
+                      return SuggestionWidget(location, () => _onSelected(location));
+                    },
+                    separatorBuilder: (context, index) {
+                      return const Divider(height: 1);
+                    },
+                  ),
+                  bottom: false),
+              const SliverSafeArea(sliver: SliverToBoxAdapter(child: Divider(height: 1)), bottom: false),
+              SliverSafeArea(
+                sliver: SeparatedSliverList(
+                  itemCount: option.data!._online.length,
+                  itemBuilder: (context, i) {
+                    var location = option.data!._online.elementAt(i);
+                    return SuggestionWidget(location, () => _onSelected(location));
+                  },
+                  separatorBuilder: (context, index) {
+                    return const Divider(height: 1);
+                  },
+                ),
               )
             ],
           );

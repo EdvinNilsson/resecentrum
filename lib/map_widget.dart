@@ -487,17 +487,17 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     await showModalBottomSheet(
         context: context,
         builder: (context) {
-          return SizedBox(
-            height: 115,
-            child: Column(
-              children: [
-                AppBar(title: highlightFirstPart(address.name), automaticallyImplyLeading: false),
-                Padding(
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppBar(title: highlightFirstPart(address.name), automaticallyImplyLeading: false),
+              SafeArea(
+                child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   child: _locationOptionsWidget(address),
                 ),
-              ],
-            ),
+              ),
+            ],
           );
         });
   }
@@ -607,12 +607,18 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
                                 },
                                 icon: const Icon(Icons.map))
                           ]),
-                      trafficSituationList(journeyDetailWithTs.data!.importantTs,
-                          boldTitle: true, padding: const EdgeInsets.fromLTRB(10, 10, 10, 0)),
-                      journeyDetailList(
-                          journeyDetailWithTs.data!.journeyDetail, journeyDetailWithTs.data!.stopNoteIcons),
-                      trafficSituationList(journeyDetailWithTs.data!.normalTs,
-                          padding: const EdgeInsets.fromLTRB(10, 0, 10, 10)),
+                      SliverSafeArea(
+                          sliver: trafficSituationList(journeyDetailWithTs.data!.importantTs,
+                              boldTitle: true, padding: const EdgeInsets.fromLTRB(10, 10, 10, 0)),
+                          bottom: false),
+                      SliverSafeArea(
+                          sliver: journeyDetailList(
+                              journeyDetailWithTs.data!.journeyDetail, journeyDetailWithTs.data!.stopNoteIcons),
+                          bottom: false),
+                      SliverSafeArea(
+                        sliver: trafficSituationList(journeyDetailWithTs.data!.normalTs,
+                            padding: const EdgeInsets.fromLTRB(10, 0, 10, 10)),
+                      ),
                     ]);
                   });
             });

@@ -302,24 +302,28 @@ Color? tryFromHex(String? hexString) {
 }
 
 Widget errorPage(VoidCallback onRefresh) {
-  return Center(
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-    const Icon(Icons.error_outline, size: 32),
-    const SizedBox(height: 12),
-    const Text('Det är inte alltid trafiken rullar på som den ska.'),
-    const Text('Kunde inte få kontakt med Västtrafik för tillfället.'),
-    const SizedBox(height: 24),
-    ElevatedButton(onPressed: onRefresh, child: const Text('Försök igen'))
-  ]));
+  return SafeArea(
+    child: Center(
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      const Icon(Icons.error_outline, size: 32),
+      const SizedBox(height: 12),
+      const Text('Det är inte alltid trafiken rullar på som den ska.'),
+      const Text('Kunde inte få kontakt med Västtrafik för tillfället.'),
+      const SizedBox(height: 24),
+      ElevatedButton(onPressed: onRefresh, child: const Text('Försök igen'))
+    ])),
+  );
 }
 
 Widget noDataPage(String message) {
-  return Center(
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-    const Icon(Icons.directions_off, size: 32),
-    const SizedBox(height: 12),
-    Text(message),
-  ]));
+  return SafeArea(
+    child: Center(
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      const Icon(Icons.directions_off, size: 32),
+      const SizedBox(height: 12),
+      Text(message),
+    ])),
+  );
 }
 
 Widget noDataSliver(String message) {
@@ -333,7 +337,7 @@ Widget noDataSliver(String message) {
 }
 
 Widget loadingPage() {
-  return const Center(child: CircularProgressIndicator.adaptive());
+  return const SafeArea(child: Center(child: CircularProgressIndicator.adaptive()));
 }
 
 Color? cardBackgroundColor(BuildContext context) {
@@ -668,12 +672,10 @@ RenderObjectWidget trafficSituationList(Iterable<TrafficSituation> trafficSituat
   if (trafficSituations.isEmpty) return SliverToBoxAdapter(child: Container());
   return SliverPadding(
     padding: padding,
-    sliver: SliverSafeArea(
-      sliver: SliverList(
-        delegate: SliverChildBuilderDelegate((context, i) {
-          return displayTrafficSituation(context, trafficSituations.elementAt(i), boldTitle, showAffectedStop);
-        }, childCount: trafficSituations.length),
-      ),
+    sliver: SliverList(
+      delegate: SliverChildBuilderDelegate((context, i) {
+        return displayTrafficSituation(context, trafficSituations.elementAt(i), boldTitle, showAffectedStop);
+      }, childCount: trafficSituations.length),
     ),
   );
 }
