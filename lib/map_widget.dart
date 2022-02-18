@@ -86,7 +86,9 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
         annotationOrder: const [AnnotationType.fill, AnnotationType.line, AnnotationType.circle, AnnotationType.symbol],
         onMapClick: _onMapTap,
         onMapLongClick: (point, coord) => _onMapTap(point, coord, longClick: true),
-        compassViewMargins: math.Point(8, MediaQuery.of(context).padding.top + 8),
+        compassViewMargins: !kIsWeb && Platform.isAndroid
+            ? math.Point(MediaQuery.of(context).padding.right + 8, MediaQuery.of(context).padding.top + 8)
+            : const math.Point(8, 8),
         attributionButtonMargins: const math.Point(-100, -100),
         logoViewMargins: const math.Point(-100, -100));
   }

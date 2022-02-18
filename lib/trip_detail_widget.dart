@@ -179,7 +179,7 @@ class TripDetailWidget extends StatelessWidget {
           Expanded(
               child: highlightFirstPart(leg.direction ?? '',
                   style: const TextStyle(fontWeight: FontWeight.bold), textScaleFactor: 1.1)),
-          accessibilityIcon(leg.accessibility, leg.destination.rtDateTime,
+          accessibilityIcon(leg.accessibility, leg.destination.rtDateTime ?? leg.origin.rtDateTime,
               margin: const EdgeInsets.fromLTRB(8, 0, 0, 0)),
         ],
       ),
@@ -284,6 +284,7 @@ class TripDetailWidget extends StatelessWidget {
     if (walkSpeed > 6 || duration <= Duration(minutes: (_changeMarginOptions.minutes ?? 5) ~/ 2)) {
       return iconAndText(Icons.error, text, gap: 10, iconColor: Colors.orange);
     }
+    return null;
   }
 
   Widget _stopHeader(TripLocation location) {
@@ -324,7 +325,7 @@ class TripDetailWidget extends StatelessWidget {
               leg.origin.rtTrack = origin.rtTrack;
 
               Stop? destination = jt.stop.firstWhere((s) => s.routeIdx == leg.destination.routeIdx!);
-              leg.destination.rtDateTime = destination.rtDepTime ?? destination.rtArrTime;
+              leg.destination.rtDateTime = destination.rtArrTime ?? destination.rtDepTime;
               leg.destination.rtTrack = destination.rtTrack;
             })));
 

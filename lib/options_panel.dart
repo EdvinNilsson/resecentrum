@@ -186,7 +186,7 @@ class _TripOptionsPanelState extends _OptionsPanelState<TripOptionsPanel> {
           (widget.tripOptions.changeMarginOptions.minutes ?? 5) < 5)
         Text('Med kort bytesmarginal gäller inte längre rätten till förseningsersättning',
             style: TextStyle(color: Theme.of(context).hintColor)),
-      const SizedBox(height: 8),
+      const SizedBox(height: 16),
       const Text('Färdmedel'),
       const SizedBox(height: 5),
       ToggleVehicleButtons(widget.tripOptions.toggleVehicleOptions),

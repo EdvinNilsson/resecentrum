@@ -52,6 +52,7 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
   }
 
   void _initTimer({bool updateIntermittently = true}) {
+    _timer?.cancel();
     _timer =
         Timer.periodic(const Duration(seconds: 15), (_) => _updateDepartureBoard(addOnlyOnce: true, ignoreError: true));
     if (updateIntermittently) _updateDepartureBoard(addOnlyOnce: true, ignoreError: true);
@@ -166,7 +167,8 @@ Future<void> getDepartureBoard(StreamController streamController, int stopId, Da
 
     // Workaround for bug in API where some departures after midnight are missing when direction is set.
     if (directionId != null &&
-        (departures.length < 20 || (dateTime ?? DateTime.now()).day != departures.last.dateTime.day)) {
+        (departures.length < 20 || (dateTime ?? DateTime.now()).day != departures.last.dateTime.day) &&
+        !secondPass) {
       var departuresAfterMidnight = await reseplaneraren.getDepartureBoard(
         stopId,
         dateTime: nextDay(dateTime),
@@ -197,8 +199,6 @@ Future<void> getDepartureBoard(StreamController streamController, int stopId, Da
       }
     }
 
-    result.sort((a, b) => (a.getDateTime()).compareTo(b.getDateTime()));
-
     var filteredTs = (await ts)
         ?.where((ts) => isPresent(ts.startTime, ts.endTime, dateTime ?? DateTime.now(), dateTime ?? DateTime.now()));
 
@@ -222,6 +222,15 @@ Future<void> getDepartureBoard(StreamController streamController, int stopId, Da
       if (addOnlyOnce) return;
     }
 
+    result.sort((a, b) {
+      int cmp = a.getDateTime().compareTo(b.getDateTime());
+      if (cmp != 0) return cmp;
+      cmp = a.dateTime.compareTo(b.dateTime);
+      if (cmp != 0) return cmp;
+      if (a.arrival != b.arrival) return a.arrival ? -1 : 1;
+      return a.journeyId.compareTo(b.journeyId);
+    });
+
     streamController.add(DepartureBoardWithTrafficSituations(result, filteredTs ?? []));
   } else {
     if (ignoreError) return;
@@ -233,7 +242,7 @@ Widget departureBoardList(Iterable<Departure> departures, double bgLuminance, do
     {void Function(BuildContext, Departure)? onTap, void Function(BuildContext, Departure)? onLongPress}) {
   if (departures.isEmpty) return SliverFillRemaining(child: noDataPage('Inga avgångar hittades'));
   return SliverPadding(
-    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+    padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 3),
     sliver: DiffUtilSliverList<Departure>(
       equalityChecker: (a, b) => a.journeyId == b.journeyId && a.dateTime == b.dateTime,
       items: departures.toList(growable: false),

@@ -98,7 +98,7 @@ class LocationSearcherWidget extends StatelessWidget {
   void _onChanged(String value) {
     _getLocalSuggestions(value);
     if (_debounce?.isActive ?? false) _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () {
+    _debounce = Timer(const Duration(milliseconds: 300), () {
       _getSuggestions(value);
     });
   }

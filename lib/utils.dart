@@ -82,7 +82,7 @@ String getTripCountdown(DateTime? departure) {
   if (departure == null) return '';
   var timeLeft = departure.difference(DateTime.now());
   var minutesLeft = timeLeft.minutesRounded();
-  if (minutesLeft.abs() > 1440) return '';
+  if (minutesLeft.abs() > 1440) return ', ' + DateFormat.MMMMEEEEd().format(departure);
   if (minutesLeft < -1) return ', avgått';
   if (minutesLeft > 0) return ', om ${getDurationString(timeLeft)}';
   return ', nu';
@@ -280,7 +280,7 @@ Widget lineIcon(String sname, Color fgColor, Color bgColor, double bgLuminance, 
       decoration: lineBoxDecoration(bgColor, fgColor, bgLuminance, context),
       child: Text(
         isTrainType(type)
-            ? '${(name.split(' ').where((t) => t != 'TÅG' && int.tryParse(t) == null)).join(' ')} $journeyNumber'
+            ? '${(name.split(' ').where((t) => int.tryParse(t) == null)).join(' ')} $journeyNumber'
             : sname,
         style: TextStyle(color: fgColor, fontWeight: FontWeight.bold),
         textAlign: TextAlign.center,
@@ -316,21 +316,24 @@ class _ErrorPageState extends State<ErrorPage> {
 
   @override
   Widget build(BuildContext context) {
-    return loading ? loadingPage() : SafeArea(
-      child: Center(
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            const Icon(Icons.error_outline, size: 32),
-            const SizedBox(height: 12),
-            const Text('Det är inte alltid trafiken rullar på som den ska.'),
-            const Text('Kunde inte få kontakt med Västtrafik för tillfället.'),
-            const SizedBox(height: 24),
-            ElevatedButton(onPressed: () async {
-              setState(() => loading = true);
-              widget.onRefresh().whenComplete(() => setState(() => loading = false));
-            }
-            , child: const Text('Försök igen'))
-          ])),
-    );
+    return loading
+        ? loadingPage()
+        : SafeArea(
+            child: Center(
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              const Icon(Icons.error_outline, size: 32),
+              const SizedBox(height: 12),
+              const Text('Det är inte alltid trafiken rullar på som den ska.'),
+              const Text('Kunde inte få kontakt med Västtrafik för tillfället.'),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                  onPressed: () async {
+                    setState(() => loading = true);
+                    widget.onRefresh().whenComplete(() => setState(() => loading = false));
+                  },
+                  child: const Text('Försök igen'))
+            ])),
+          );
   }
 }
 
@@ -360,9 +363,7 @@ Widget loadingPage() {
 }
 
 Color? cardBackgroundColor(BuildContext context) {
-  return Theme.of(context).brightness == Brightness.light
-      ? Color.lerp(Theme.of(context).canvasColor, Colors.black, 0.05)
-      : Theme.of(context).canvasColor;
+  return Theme.of(context).brightness == Brightness.light ? Colors.grey.shade100 : Theme.of(context).canvasColor;
 }
 
 const TextStyle cancelledTextStyle = TextStyle(color: Colors.red, decoration: TextDecoration.lineThrough);

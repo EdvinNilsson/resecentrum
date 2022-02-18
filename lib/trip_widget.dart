@@ -196,7 +196,9 @@ class FavoritePlacesList extends StatefulWidget {
 }
 
 class _FavoritePlacesListState extends State<FavoritePlacesList> {
-  void _update() => setState(() {});
+  void _update() {
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
