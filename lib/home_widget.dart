@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:resecentrum/main.dart';
 import 'package:uni_links/uni_links.dart';
 
 import 'departure_board_widget.dart';
@@ -23,7 +24,7 @@ class Home extends StatefulWidget {
 }
 
 class HomeState extends State<Home> {
-  int _currentIndex = 0;
+  int _currentIndex = mainBox.get('tab', defaultValue: 0);
   StreamSubscription? _sub;
 
   final List<Widget> _tabs = [
@@ -78,6 +79,7 @@ class HomeState extends State<Home> {
     setState(() {
       _currentIndex = index;
     });
+    if (index < 2) mainBox.put('tab', index);
   }
 
   void setTripLocation(Location location, {required bool isOrigin, bool switchPage = true}) {

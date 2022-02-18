@@ -7,6 +7,7 @@ import 'favorites.dart';
 import 'home_widget.dart';
 import 'reseplaneraren.dart';
 
+late Box mainBox;
 late Box departureBoardBox;
 late Box tripBox;
 late Box<Location> favoriteLocationsBox;
@@ -17,6 +18,7 @@ void main() async {
   Hive.registerAdapter(StopLocationAdapter());
   Hive.registerAdapter(CoordLocationAdapter());
   Hive.registerAdapter(TripHistoryAdapter());
+  mainBox = await Hive.openBox('main');
   tripBox = await Hive.openBox('trip');
   departureBoardBox = await Hive.openBox('departureBoard');
   favoriteLocationsBox = await Hive.openBox('favoriteLocations');
