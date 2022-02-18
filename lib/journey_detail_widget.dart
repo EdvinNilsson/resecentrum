@@ -179,8 +179,7 @@ RenderObjectWidget journeyDetailList(JourneyDetail journeyDetail, Iterable<Icon?
                             ..write(' som linje ')
                             ..write(getValueAtRouteIdx(journeyDetail.journeyName, stop.routeIdx).name)
                             ..write(' mot ')
-                            ..write(getValueAtRouteIdx(journeyDetail.direction, stop.routeIdx).direction)
-                            ..write('.'))
+                            ..write(getValueAtRouteIdx(journeyDetail.direction, stop.routeIdx).direction))
                           .toString(),
                       textAlign: TextAlign.center)),
               const Divider(height: 0),

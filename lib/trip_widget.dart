@@ -204,7 +204,7 @@ class _FavoritePlacesListState extends State<FavoritePlacesList> {
     var favoriteLocations =
         (widget.onlyStops ? allFavoriteLocations.whereType<StopLocation>() : allFavoriteLocations).toList();
     if (favoriteLocations.isEmpty) {
-      return noDataSliver('Här visas ${widget.onlyStops ? 'favorithållplatser' : 'favoritplatser'}.');
+      return noDataSliver('Här visas ${widget.onlyStops ? 'favorithållplatser' : 'favoritplatser'}');
     }
     return SeparatedSliverList(
       itemCount: favoriteLocations.length,
@@ -236,7 +236,7 @@ class _TripHistoryListState extends State<TripHistoryList> {
   @override
   Widget build(BuildContext context) {
     return tripHistory.isEmpty
-        ? noDataSliver('Här visas tidigare resvägar samt dina favoritresvägar.')
+        ? noDataSliver('Här visas tidigare resvägar samt dina favoritresvägar')
         : SliverReorderableList(
             itemBuilder: (context, i) {
               var trip = tripHistory.elementAt(i);
@@ -274,7 +274,7 @@ class _TripHistoryListState extends State<TripHistoryList> {
 
   String _deleteTripMessage(TripHistory trip) {
     String via = trip.via != null ? ' via ${trip.via!.name.firstPart()}' : '';
-    return 'Resväg mellan ${trip.from.name.firstPart()} och ${trip.to.name.firstPart()}$via togs bort.';
+    return 'Resväg mellan ${trip.from.name.firstPart()} och ${trip.to.name.firstPart()}$via togs bort';
   }
 }
 

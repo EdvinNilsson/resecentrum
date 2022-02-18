@@ -156,13 +156,13 @@ class _TripOptionsPanelState extends _OptionsPanelState<TripOptionsPanel> {
     ];
 
     return [
-      const Text('Via hållplats:'),
+      const Text('Via hållplats'),
       LocationField(widget.tripOptions.viaFieldController, widget.tripOptions.viaInput, 'Via',
           onlyStops: true,
           suffixIcon: IconButton(
               onPressed: widget.tripOptions.viaFieldController.clearLocation, icon: const Icon(Icons.clear))),
       const SizedBox(height: 16),
-      const Text('Minsta bytestid:'),
+      const Text('Bytesmarginal'),
       DropdownButton<ChangeMargin>(
           value: widget.tripOptions.changeMarginOptions.dropdownValue,
           onChanged: (ChangeMargin? newValue) {
@@ -184,10 +184,10 @@ class _TripOptionsPanelState extends _OptionsPanelState<TripOptionsPanel> {
           items: items),
       if (widget.tripOptions.changeMarginOptions.dropdownValue == ChangeMargin.short ||
           (widget.tripOptions.changeMarginOptions.minutes ?? 5) < 5)
-        Text('Med kort bytesmarginal gäller inte längre rätten till förseningsersättning.',
+        Text('Med kort bytesmarginal gäller inte längre rätten till förseningsersättning',
             style: TextStyle(color: Theme.of(context).hintColor)),
       const SizedBox(height: 8),
-      const Text('Färdmedel:'),
+      const Text('Färdmedel'),
       const SizedBox(height: 5),
       ToggleVehicleButtons(widget.tripOptions.toggleVehicleOptions),
       CheckboxListTile(
@@ -217,7 +217,7 @@ class _DepartureBoardOptionsPanel extends _OptionsPanelState<DepartureBoardOptio
   @override
   List<Widget> children() {
     return [
-      const Text('Färdmedel:'),
+      const Text('Färdmedel'),
       const SizedBox(height: 5),
       ToggleVehicleButtons(widget.departureBoardOptions.toggleVehicleOptions),
       CheckboxListTile(

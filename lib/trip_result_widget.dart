@@ -44,7 +44,7 @@ class TripResultWidget extends StatelessWidget {
             builder: (context, tripList) {
               if (tripList.connectionState == ConnectionState.waiting) return loadingPage();
               if (!tripList.hasData) return ErrorPage(_updateTrip);
-              if (tripList.data!.isEmpty) return noDataPage('Inga reseförslag hittades.');
+              if (tripList.data!.isEmpty) return noDataPage('Inga reseförslag hittades');
               int maxTripTime = _getMaxTripTime(tripList.data!);
               return CustomScrollView(
                 slivers: [
@@ -72,7 +72,7 @@ class TripResultWidget extends StatelessWidget {
                                         .map((l) => l.name.uncapitalize())
                                         .joinNaturally()
                                         .capitalize() +
-                                    ' är inställd.');
+                                    ' är inställd');
                         return Card(
                             margin: const EdgeInsets.all(5),
                             child: InkWell(

@@ -228,7 +228,7 @@ Future<void> getDepartureBoard(StreamController streamController, int stopId, Da
 
 Widget departureBoardList(Iterable<Departure> departures, double bgLuminance, double lat, double long,
     {void Function(BuildContext, Departure)? onTap, void Function(BuildContext, Departure)? onLongPress}) {
-  if (departures.isEmpty) return SliverFillRemaining(child: noDataPage('Inga avgångar hittades.'));
+  if (departures.isEmpty) return SliverFillRemaining(child: noDataPage('Inga avgångar hittades'));
   return SliverPadding(
     padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
     sliver: DiffUtilSliverList<Departure>(

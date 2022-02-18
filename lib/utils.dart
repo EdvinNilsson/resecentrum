@@ -660,7 +660,7 @@ Future<Location?> getLocationFromCoord(double latitude, double longitude,
 
 void noLocationFound(BuildContext context, {bool onlyStops = false}) {
   ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Kunde inte hitta en närliggande ${!onlyStops ? 'adress eller ' : ''}hållplats.')));
+      SnackBar(content: Text('Kunde inte hitta en närliggande ${!onlyStops ? 'adress eller ' : ''}hållplats')));
 }
 
 String lineIdFromJourneyId(String journeyId) => '${journeyId.substring(0, 3)}1${journeyId.substring(4, 11)}00000';
