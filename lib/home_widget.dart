@@ -57,20 +57,16 @@ class HomeState extends State<Home> {
         automaticallyImplyLeading: false,
       ),
       body: _tabs[_currentIndex],
-      bottomNavigationBar: SafeArea(
-        top: false,
-        bottom: false,
-        child: BottomNavigationBar(
-          onTap: _onTabTapped,
-          currentIndex: _currentIndex,
-          type: BottomNavigationBarType.fixed,
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.tram), label: 'Sök resa'),
-            BottomNavigationBarItem(icon: Icon(Icons.departure_board), label: 'Nästa tur'),
-            BottomNavigationBarItem(icon: Icon(Icons.error_outline), label: 'Trafikinfo'),
-            BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Karta')
-          ],
-        ),
+      bottomNavigationBar: BottomNavigationBar(
+        onTap: _onTabTapped,
+        currentIndex: _currentIndex,
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.tram), label: 'Sök resa'),
+          BottomNavigationBarItem(icon: Icon(Icons.departure_board), label: 'Nästa tur'),
+          BottomNavigationBarItem(icon: Icon(Icons.error_outline), label: 'Trafikinfo'),
+          BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Karta')
+        ],
       ),
     );
   }

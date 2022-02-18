@@ -728,6 +728,28 @@ TextSpan highlightFirstPartSpan(String text, TextStyle? style, BuildContext cont
             ]);
 }
 
+class SystemGestureArea extends StatelessWidget {
+  final Widget child;
+  final EdgeInsets systemGestureInsets;
+
+  const SystemGestureArea(this.systemGestureInsets, {required this.child, Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        child,
+        Positioned(
+            bottom: 0,
+            child: Container(
+                color: Colors.transparent,
+                width: MediaQuery.of(context).size.width,
+                height: systemGestureInsets.bottom))
+      ],
+    );
+  }
+}
+
 Iterable<T> merge<T>(List<T> a, List<T> b, Comparator<T> comparator) {
   List<T> result = [];
 

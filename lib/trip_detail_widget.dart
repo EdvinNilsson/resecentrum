@@ -86,29 +86,32 @@ class TripDetailWidget extends StatelessWidget {
           ],
         ),
         backgroundColor: cardBackgroundColor(context),
-        body: RefreshIndicator(
-            onRefresh: () => _handleRefresh(),
-            child: StreamBuilder<Trip>(
-              stream: _streamController.stream,
-              builder: (context, tripSnapshot) {
-                if (tripSnapshot.connectionState == ConnectionState.waiting) return loadingPage();
-                var widgets = _legWidgets(context);
-                return CustomScrollView(
-                  slivers: [
-                    SliverSafeArea(
-                      sliver: SliverPadding(
-                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
-                        sliver: SeparatedSliverList(
-                          itemCount: widgets.length,
-                          itemBuilder: (context, i) => widgets.elementAt(i),
-                          separatorBuilder: (context, i) => const Divider(),
+        body: SystemGestureArea(
+          MediaQuery.of(context).systemGestureInsets,
+          child: RefreshIndicator(
+              onRefresh: () => _handleRefresh(),
+              child: StreamBuilder<Trip>(
+                stream: _streamController.stream,
+                builder: (context, tripSnapshot) {
+                  if (tripSnapshot.connectionState == ConnectionState.waiting) return loadingPage();
+                  var widgets = _legWidgets(context);
+                  return CustomScrollView(
+                    slivers: [
+                      SliverSafeArea(
+                        sliver: SliverPadding(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+                          sliver: SeparatedSliverList(
+                            itemCount: widgets.length,
+                            itemBuilder: (context, i) => widgets.elementAt(i),
+                            separatorBuilder: (context, i) => const Divider(),
+                          ),
                         ),
-                      ),
-                    )
-                  ],
-                );
-              },
-            )));
+                      )
+                    ],
+                  );
+                },
+              )),
+        ));
   }
 
   List<MapJourney> get _mapJourneys => _trip.leg

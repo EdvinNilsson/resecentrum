@@ -38,116 +38,121 @@ class TripResultWidget extends StatelessWidget {
           title: tripTitle(_from.name, _to.name, via: _tripOptions.viaFieldController.location?.name),
         ),
         backgroundColor: cardBackgroundColor(context),
-        body: RefreshIndicator(
-          onRefresh: () => _handleRefresh(),
-          child: StreamBuilder<Iterable<Trip>?>(
-            builder: (context, tripList) {
-              if (tripList.connectionState == ConnectionState.waiting) return loadingPage();
-              if (!tripList.hasData) return ErrorPage(_updateTrip);
-              if (tripList.data!.isEmpty) return noDataPage('Inga reseförslag hittades');
-              int maxTripTime = _getMaxTripTime(tripList.data!);
-              return CustomScrollView(
-                slivers: [
-                  SliverSafeArea(
-                    sliver: SliverPadding(
-                      padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 5),
-                      sliver: SliverList(
-                          delegate: SliverChildBuilderDelegate((context, i) {
-                        if (i == tripList.data!.length) {
-                          _addTrips(tripList.data!.last.leg.first.origin.dateTime.add(const Duration(minutes: 1)));
-                          return Container(child: loadingPage(), constraints: const BoxConstraints(minHeight: 80));
-                        }
-                        var trip = tripList.data!.elementAt(i);
-                        var tripTime = getTripTime(trip);
-                        bool cancelled = trip.leg.any((l) => l.cancelled);
-                        List<String> notes = <String>[]
-                            .addIf(!trip.travelWarranty, 'Resegaranti gäller ej för denna resa')
-                            .addIf(trip.alternative, 'Reseförslaget baseras på aktuell trafiksituation');
-                        List<String> warnings = <String>[]
-                            .addIf(!cancelled && !_isValidTrip(trip), 'Risk för att missa anslutning')
-                            .addIf(
-                                cancelled,
-                                trip.leg
-                                        .where((l) => l.cancelled)
-                                        .map((l) => l.name.uncapitalize())
-                                        .joinNaturally()
-                                        .capitalize() +
-                                    ' är inställd');
-                        return Card(
-                            margin: const EdgeInsets.all(5),
-                            child: InkWell(
-                              onTap: () async {
-                                await Navigator.push(context, MaterialPageRoute(builder: (context) {
-                                  return TripDetailWidget(trip, _tripOptions.changeMarginOptions);
-                                }));
-                              },
-                              onLongPress: () async {
-                                await Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
-                                  return MapWidget(trip.leg
-                                      .map((l) => l.journeyDetailRef == null
-                                          ? MapJourney(
-                                              walk: true, geometry: l.cachedGeometry, geometryRef: l.geometryRef!)
-                                          : MapJourney(
-                                              journeyDetailRef: l.journeyDetailRef,
-                                              journeyPart: IdxJourneyPart(l.origin.routeIdx!, l.destination.routeIdx!)))
-                                      .toList(growable: false));
-                                }));
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  _legBar(trip, bgLuminance, maxTripTime, tripTime.inMinutes, context),
-                                  const SizedBox(height: 8),
-                                  Row(children: [
-                                    Container(
-                                      constraints: const BoxConstraints(minWidth: 56),
-                                      child: Text(
-                                          trip.leg.first.origin.dateTime.time() +
-                                              getDelayString(getTripLocationDelay(trip.leg.first.origin)),
-                                          style: trip.leg.first.origin.cancelled ? cancelledTextStyle : null),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Wrap(
-                                          spacing: 12,
-                                          crossAxisAlignment: WrapCrossAlignment.center,
-                                          children: <Widget>[
-                                            TripTimeWidget(tripTime, trip.leg.firstWhereOrNull((l) => l.type != 'WALK'))
-                                          ]
-                                              .insertIf(_anyNote(trip), 0, _getNotesIcon(trip))
-                                              .insertIf(cancelled, 0,
-                                                  const Text('Inställd', style: TextStyle(color: Colors.red)))
-                                              .addIf(
-                                                  trip.leg.any((l) =>
-                                                      (l.origin.rtDateTime ?? l.destination.rtDateTime) != null &&
-                                                      l.type != 'WALK' &&
-                                                      l.accessibility == null),
-                                                  const Icon(Icons.not_accessible))),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                        trip.leg.last.destination.dateTime.time() +
-                                            getDelayString(getTripLocationDelay(trip.leg.last.destination)),
-                                        style: trip.leg.last.destination.cancelled ? cancelledTextStyle : null)
+        body: SystemGestureArea(
+          MediaQuery.of(context).systemGestureInsets,
+          child: RefreshIndicator(
+            onRefresh: () => _handleRefresh(),
+            child: StreamBuilder<Iterable<Trip>?>(
+              builder: (context, tripList) {
+                if (tripList.connectionState == ConnectionState.waiting) return loadingPage();
+                if (!tripList.hasData) return ErrorPage(_updateTrip);
+                if (tripList.data!.isEmpty) return noDataPage('Inga reseförslag hittades');
+                int maxTripTime = _getMaxTripTime(tripList.data!);
+                return CustomScrollView(
+                  slivers: [
+                    SliverSafeArea(
+                      sliver: SliverPadding(
+                        padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 5),
+                        sliver: SliverList(
+                            delegate: SliverChildBuilderDelegate((context, i) {
+                          if (i == tripList.data!.length) {
+                            _addTrips(tripList.data!.last.leg.first.origin.dateTime.add(const Duration(minutes: 1)));
+                            return Container(child: loadingPage(), constraints: const BoxConstraints(minHeight: 80));
+                          }
+                          var trip = tripList.data!.elementAt(i);
+                          var tripTime = getTripTime(trip);
+                          bool cancelled = trip.leg.any((l) => l.cancelled);
+                          List<String> notes = <String>[]
+                              .addIf(!trip.travelWarranty, 'Resegaranti gäller ej för denna resa')
+                              .addIf(trip.alternative, 'Reseförslaget baseras på aktuell trafiksituation');
+                          List<String> warnings = <String>[]
+                              .addIf(!cancelled && !_isValidTrip(trip), 'Risk för att missa anslutning')
+                              .addIf(
+                                  cancelled,
+                                  trip.leg
+                                          .where((l) => l.cancelled)
+                                          .map((l) => l.name.uncapitalize())
+                                          .joinNaturally()
+                                          .capitalize() +
+                                      ' är inställd');
+                          return Card(
+                              margin: const EdgeInsets.all(5),
+                              child: InkWell(
+                                onTap: () async {
+                                  await Navigator.push(context, MaterialPageRoute(builder: (context) {
+                                    return TripDetailWidget(trip, _tripOptions.changeMarginOptions);
+                                  }));
+                                },
+                                onLongPress: () async {
+                                  await Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
+                                    return MapWidget(trip.leg
+                                        .map((l) => l.journeyDetailRef == null
+                                            ? MapJourney(
+                                                walk: true, geometry: l.cachedGeometry, geometryRef: l.geometryRef!)
+                                            : MapJourney(
+                                                journeyDetailRef: l.journeyDetailRef,
+                                                journeyPart:
+                                                    IdxJourneyPart(l.origin.routeIdx!, l.destination.routeIdx!)))
+                                        .toList(growable: false));
+                                  }));
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    _legBar(trip, bgLuminance, maxTripTime, tripTime.inMinutes, context),
+                                    const SizedBox(height: 8),
+                                    Row(children: [
+                                      Container(
+                                        constraints: const BoxConstraints(minWidth: 56),
+                                        child: Text(
+                                            trip.leg.first.origin.dateTime.time() +
+                                                getDelayString(getTripLocationDelay(trip.leg.first.origin)),
+                                            style: trip.leg.first.origin.cancelled ? cancelledTextStyle : null),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Wrap(
+                                            spacing: 12,
+                                            crossAxisAlignment: WrapCrossAlignment.center,
+                                            children: <Widget>[
+                                              TripTimeWidget(
+                                                  tripTime, trip.leg.firstWhereOrNull((l) => l.type != 'WALK'))
+                                            ]
+                                                .insertIf(_anyNote(trip), 0, _getNotesIcon(trip))
+                                                .insertIf(cancelled, 0,
+                                                    const Text('Inställd', style: TextStyle(color: Colors.red)))
+                                                .addIf(
+                                                    trip.leg.any((l) =>
+                                                        (l.origin.rtDateTime ?? l.destination.rtDateTime) != null &&
+                                                        l.type != 'WALK' &&
+                                                        l.accessibility == null),
+                                                    const Icon(Icons.not_accessible))),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                          trip.leg.last.destination.dateTime.time() +
+                                              getDelayString(getTripLocationDelay(trip.leg.last.destination)),
+                                          style: trip.leg.last.destination.cancelled ? cancelledTextStyle : null)
+                                    ]),
+                                    if (notes.isNotEmpty || warnings.isNotEmpty) const SizedBox(height: 8),
+                                    Wrap(
+                                        children: [
+                                      warnings.map<Widget>((msg) => iconAndText(Icons.warning, msg,
+                                          iconColor: Colors.red, textColor: Theme.of(context).hintColor)),
+                                      notes.map<Widget>(
+                                          (msg) => Text(msg, style: TextStyle(color: Theme.of(context).hintColor)))
+                                    ].expand((x) => x).toList(growable: false))
                                   ]),
-                                  if (notes.isNotEmpty || warnings.isNotEmpty) const SizedBox(height: 8),
-                                  Wrap(
-                                      children: [
-                                    warnings.map<Widget>((msg) => iconAndText(Icons.warning, msg,
-                                        iconColor: Colors.red, textColor: Theme.of(context).hintColor)),
-                                    notes.map<Widget>(
-                                        (msg) => Text(msg, style: TextStyle(color: Theme.of(context).hintColor)))
-                                  ].expand((x) => x).toList(growable: false))
-                                ]),
-                              ),
-                            ));
-                      }, childCount: tripList.data!.length + 1)),
-                    ),
-                  )
-                ],
-              );
-            },
-            stream: _streamController.stream,
+                                ),
+                              ));
+                        }, childCount: tripList.data!.length + 1)),
+                      ),
+                    )
+                  ],
+                );
+              },
+              stream: _streamController.stream,
+            ),
           ),
         ));
   }

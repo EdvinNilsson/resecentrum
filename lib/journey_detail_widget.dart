@@ -55,30 +55,33 @@ class JourneyDetailWidget extends StatelessWidget {
                 icon: const Icon(Icons.map))
           ],
         ),
-        body: RefreshIndicator(
-          onRefresh: () => _handleRefresh(),
-          child: StreamBuilder<JourneyDetailWithTrafficSituations?>(
-            builder: (context, journeyDetailWithTs) {
-              if (journeyDetailWithTs.connectionState == ConnectionState.waiting) return loadingPage();
-              if (!journeyDetailWithTs.hasData) return ErrorPage(_updateJourneyDetail);
-              return CustomScrollView(
-                slivers: [
-                  SliverSafeArea(
-                      sliver: trafficSituationList(journeyDetailWithTs.data!.importantTs,
-                          boldTitle: true, padding: const EdgeInsets.fromLTRB(10, 10, 10, 0)),
-                      bottom: false),
-                  SliverSafeArea(
-                      sliver: journeyDetailList(
-                          journeyDetailWithTs.data!.journeyDetail, journeyDetailWithTs.data!.stopNoteIcons),
-                      bottom: false),
-                  SliverSafeArea(
-                    sliver: trafficSituationList(journeyDetailWithTs.data!.normalTs,
-                        padding: const EdgeInsets.fromLTRB(10, 0, 10, 10)),
-                  ),
-                ],
-              );
-            },
-            stream: _streamController.stream,
+        body: SystemGestureArea(
+          MediaQuery.of(context).systemGestureInsets,
+          child: RefreshIndicator(
+            onRefresh: () => _handleRefresh(),
+            child: StreamBuilder<JourneyDetailWithTrafficSituations?>(
+              builder: (context, journeyDetailWithTs) {
+                if (journeyDetailWithTs.connectionState == ConnectionState.waiting) return loadingPage();
+                if (!journeyDetailWithTs.hasData) return ErrorPage(_updateJourneyDetail);
+                return CustomScrollView(
+                  slivers: [
+                    SliverSafeArea(
+                        sliver: trafficSituationList(journeyDetailWithTs.data!.importantTs,
+                            boldTitle: true, padding: const EdgeInsets.fromLTRB(10, 10, 10, 0)),
+                        bottom: false),
+                    SliverSafeArea(
+                        sliver: journeyDetailList(
+                            journeyDetailWithTs.data!.journeyDetail, journeyDetailWithTs.data!.stopNoteIcons),
+                        bottom: false),
+                    SliverSafeArea(
+                      sliver: trafficSituationList(journeyDetailWithTs.data!.normalTs,
+                          padding: const EdgeInsets.fromLTRB(10, 0, 10, 10)),
+                    ),
+                  ],
+                );
+              },
+              stream: _streamController.stream,
+            ),
           ),
         ));
   }

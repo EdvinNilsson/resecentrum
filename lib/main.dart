@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
@@ -33,29 +34,35 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Resecentrum',
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [
-        Locale('sv'),
-      ],
-      theme: ThemeData(primarySwatch: createMaterialColor(primaryColor)),
-      darkTheme: ThemeData(
-        brightness: Brightness.dark,
-        primaryColor: primaryColor,
-        toggleableActiveColor: primaryColor,
-        elevatedButtonTheme: ElevatedButtonThemeData(
-            style: ButtonStyle(foregroundColor: MaterialStateProperty.all<Color>(Colors.white))),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: primaryColor,
-        ),
-        colorScheme: const ColorScheme.dark().copyWith(primary: primaryColor, secondary: primaryColor),
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    return AnnotatedRegion(
+      value: const SystemUiOverlayStyle(
+        systemNavigationBarColor: Colors.transparent,
       ),
-      home: const Home(),
+      child: MaterialApp(
+        title: 'Resecentrum',
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [
+          Locale('sv'),
+        ],
+        theme: ThemeData(primarySwatch: createMaterialColor(primaryColor)),
+        darkTheme: ThemeData(
+          brightness: Brightness.dark,
+          primaryColor: primaryColor,
+          toggleableActiveColor: primaryColor,
+          elevatedButtonTheme: ElevatedButtonThemeData(
+              style: ButtonStyle(foregroundColor: MaterialStateProperty.all<Color>(Colors.white))),
+          appBarTheme: const AppBarTheme(
+            backgroundColor: primaryColor,
+          ),
+          colorScheme: const ColorScheme.dark().copyWith(primary: primaryColor, secondary: primaryColor),
+        ),
+        home: const Home(),
+      ),
     );
   }
 

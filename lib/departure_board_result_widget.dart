@@ -74,45 +74,48 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
                         overflow: TextOverflow.fade, style: const TextStyle(fontSize: 14, color: Colors.white70))
                   ])),
         backgroundColor: cardBackgroundColor(context),
-        body: RefreshIndicator(
-          onRefresh: () => _handleRefresh(),
-          child: StreamBuilder<DepartureBoardWithTrafficSituations?>(
-              builder: (context, departureBoard) {
-                if (departureBoard.connectionState == ConnectionState.waiting) return loadingPage();
-                if (!departureBoard.hasData) return ErrorPage(_updateDepartureBoard);
-                var bgLuminance = Theme.of(context).cardColor.computeLuminance();
-                return CustomScrollView(slivers: [
-                  SliverSafeArea(
-                    sliver: departureBoardList(departureBoard.data!.departures, bgLuminance, widget._stopLocation.lat,
-                        widget._stopLocation.lon, onTap: (context, departure) async {
-                      _timer?.cancel();
-                      await Navigator.push(context, MaterialPageRoute(builder: (context) {
-                        return JourneyDetailWidget(
-                            departure.journeyDetailRef,
-                            departure.sname,
-                            departure.fgColor,
-                            departure.bgColor,
-                            departure.direction,
-                            departure.journeyId,
-                            departure.type,
-                            departure.name,
-                            departure.journeyNumber);
-                      })).then((_) => _initTimer());
-                    }, onLongPress: (context, departure) async {
-                      await Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
+        body: SystemGestureArea(
+          MediaQuery.of(context).systemGestureInsets,
+          child: RefreshIndicator(
+            onRefresh: () => _handleRefresh(),
+            child: StreamBuilder<DepartureBoardWithTrafficSituations?>(
+                builder: (context, departureBoard) {
+                  if (departureBoard.connectionState == ConnectionState.waiting) return loadingPage();
+                  if (!departureBoard.hasData) return ErrorPage(_updateDepartureBoard);
+                  var bgLuminance = Theme.of(context).cardColor.computeLuminance();
+                  return CustomScrollView(slivers: [
+                    SliverSafeArea(
+                      sliver: departureBoardList(departureBoard.data!.departures, bgLuminance, widget._stopLocation.lat,
+                          widget._stopLocation.lon, onTap: (context, departure) async {
                         _timer?.cancel();
-                        return MapWidget([MapJourney(journeyDetailRef: departure.journeyDetailRef)]);
-                      })).then((_) => _initTimer());
-                    }),
-                    bottom: false,
-                  ),
-                  SliverSafeArea(
-                    sliver: trafficSituationList(departureBoard.data!.ts,
-                        padding: const EdgeInsets.fromLTRB(10, 0, 10, 10), showAffectedStop: false),
-                  )
-                ]);
-              },
-              stream: _departureStreamController.stream),
+                        await Navigator.push(context, MaterialPageRoute(builder: (context) {
+                          return JourneyDetailWidget(
+                              departure.journeyDetailRef,
+                              departure.sname,
+                              departure.fgColor,
+                              departure.bgColor,
+                              departure.direction,
+                              departure.journeyId,
+                              departure.type,
+                              departure.name,
+                              departure.journeyNumber);
+                        })).then((_) => _initTimer());
+                      }, onLongPress: (context, departure) async {
+                        await Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
+                          _timer?.cancel();
+                          return MapWidget([MapJourney(journeyDetailRef: departure.journeyDetailRef)]);
+                        })).then((_) => _initTimer());
+                      }),
+                      bottom: false,
+                    ),
+                    SliverSafeArea(
+                      sliver: trafficSituationList(departureBoard.data!.ts,
+                          padding: const EdgeInsets.fromLTRB(10, 0, 10, 10), showAffectedStop: false),
+                    )
+                  ]);
+                },
+                stream: _departureStreamController.stream),
+          ),
         ));
   }
 
