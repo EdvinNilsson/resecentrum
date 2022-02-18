@@ -19,8 +19,12 @@ class TripResultWidget extends StatelessWidget {
   final bool? _searchForArrival;
   final TripOptions _tripOptions;
 
+  Iterable<Trip>? _trips;
+
   TripResultWidget(this._from, this._to, this._dateTime, this._searchForArrival, this._tripOptions, {Key? key})
-      : super(key: key);
+      : super(key: key) {
+    _updateTrip();
+  }
 
   final StreamController<Iterable<Trip>?> _streamController = StreamController.broadcast();
 
@@ -28,7 +32,6 @@ class TripResultWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    _updateTrip();
     var bgLuminance = Theme.of(context).cardColor.computeLuminance();
     return Scaffold(
         appBar: AppBar(
@@ -50,6 +53,10 @@ class TripResultWidget extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 5),
                       sliver: SliverList(
                           delegate: SliverChildBuilderDelegate((context, i) {
+                        if (i == tripList.data!.length) {
+                          _addTrips(tripList.data!.last.leg.first.origin.dateTime.add(const Duration(minutes: 1)));
+                          return Container(child: loadingPage(), constraints: const BoxConstraints(minHeight: 80));
+                        }
                         var trip = tripList.data!.elementAt(i);
                         var tripTime = getTripTime(trip);
                         bool cancelled = trip.leg.any((l) => l.cancelled);
@@ -113,6 +120,7 @@ class TripResultWidget extends StatelessWidget {
                                               .addIf(
                                                   trip.leg.any((l) =>
                                                       (l.origin.rtDateTime ?? l.destination.rtDateTime) != null &&
+                                                      l.type != 'WALK' &&
                                                       l.accessibility == null),
                                                   const Icon(Icons.not_accessible))),
                                     ),
@@ -133,7 +141,7 @@ class TripResultWidget extends StatelessWidget {
                                 ]),
                               ),
                             ));
-                      }, childCount: tripList.data!.length)),
+                      }, childCount: tripList.data!.length + 1)),
                     ),
                   )
                 ],
@@ -144,8 +152,8 @@ class TripResultWidget extends StatelessWidget {
         ));
   }
 
-  void _updateTrip() async {
-    Iterable<Trip>? result = await reseplaneraren.getTrip(
+  Future<Iterable<Trip>?> _getTrip(DateTime? dateTime) async {
+    return await reseplaneraren.getTrip(
       originId: _from is StopLocation ? (_from as StopLocation).id : null,
       destId: _to is StopLocation ? (_to as StopLocation).id : null,
       originCoordLat: _from is StopLocation ? null : _from.lat,
@@ -154,7 +162,7 @@ class TripResultWidget extends StatelessWidget {
       destCoordLat: _to is StopLocation ? null : _to.lat,
       destCoordLong: _to is StopLocation ? null : _to.lon,
       destCoordName: _to is StopLocation ? null : _to.name,
-      dateTime: _dateTime,
+      dateTime: dateTime,
       additionalChangeTime: _tripOptions.changeMarginOptions.minutes,
       wheelChairSpace: _tripOptions.wheelchairOptions.wheelchair ? true : null,
       rampOrLift: _tripOptions.wheelchairOptions.wheelchair ? true : null,
@@ -168,8 +176,16 @@ class TripResultWidget extends StatelessWidget {
       needGeo: true,
       searchForArrival: _searchForArrival,
     );
+  }
 
-    _streamController.add(result);
+  Future<void> _updateTrip() async {
+    _trips = await _getTrip(_dateTime);
+    _streamController.add(_trips);
+  }
+
+  void _addTrips(DateTime dateTime) async {
+    _trips = _trips?.followedBy(await _getTrip(dateTime) ?? []);
+    _streamController.add(_trips);
   }
 
   Widget _legBar(Trip trip, double bgLuminance, int maxTripTime, int tripTime, BuildContext context) {
