@@ -43,7 +43,7 @@ class TripResultWidget extends StatelessWidget {
           child: StreamBuilder<Iterable<Trip>?>(
             builder: (context, tripList) {
               if (tripList.connectionState == ConnectionState.waiting) return loadingPage();
-              if (!tripList.hasData) return errorPage(() => {_updateTrip()});
+              if (!tripList.hasData) return ErrorPage(_updateTrip);
               if (tripList.data!.isEmpty) return noDataPage('Inga reseförslag hittades.');
               int maxTripTime = _getMaxTripTime(tripList.data!);
               return CustomScrollView(

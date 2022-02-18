@@ -52,7 +52,7 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
         if (_isLoading) Container(color: Theme.of(context).canvasColor),
         if (_isError)
           Container(
-              child: errorPage(() {
+              child: ErrorPage(() async {
                 _controller?.reload();
                 setState(() {
                   _isError = false;

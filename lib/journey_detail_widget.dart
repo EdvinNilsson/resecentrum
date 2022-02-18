@@ -60,7 +60,7 @@ class JourneyDetailWidget extends StatelessWidget {
           child: StreamBuilder<JourneyDetailWithTrafficSituations?>(
             builder: (context, journeyDetailWithTs) {
               if (journeyDetailWithTs.connectionState == ConnectionState.waiting) return loadingPage();
-              if (!journeyDetailWithTs.hasData) return errorPage(() => {_updateJourneyDetail()});
+              if (!journeyDetailWithTs.hasData) return ErrorPage(_updateJourneyDetail);
               return CustomScrollView(
                 slivers: [
                   SliverSafeArea(
@@ -83,7 +83,7 @@ class JourneyDetailWidget extends StatelessWidget {
         ));
   }
 
-  void _updateJourneyDetail() async {
+  Future<void> _updateJourneyDetail() async {
     var response = await getJourneyDetail(journeyDetailRef, journeyId);
     journeyDetail = response?.journeyDetail;
     _streamController.add(response);

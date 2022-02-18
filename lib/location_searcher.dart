@@ -57,7 +57,7 @@ class LocationSearcherWidget extends StatelessWidget {
       body: StreamBuilder<Suggestions?>(
         builder: (context, option) {
           if (option.connectionState == ConnectionState.waiting) return loadingPage();
-          if (!option.hasData) return errorPage(() => _getSuggestions(_textController.text));
+          if (!option.hasData) return ErrorPage(() => _getSuggestions(_textController.text));
           return CustomScrollView(
             slivers: [
               SliverSafeArea(
@@ -133,7 +133,7 @@ class LocationSearcherWidget extends StatelessWidget {
     _streamController.add(_lastSuggestions);
   }
 
-  void _getSuggestions(String input, {bool initial = false}) async {
+  Future<void> _getSuggestions(String input, {bool initial = false}) async {
     Iterable<Location>? response = await reseplaneraren.getLocationByName(input, onlyStops: _onlyStops);
     if (response == null) {
       if (initial) _streamController.add(null);

@@ -116,7 +116,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     _updatePosition(_timer!);
   }
 
-  void _updateJourneyDetail(
+  Future<void> _updateJourneyDetail(
       StreamController streamController, Departure departure, Wrapper<JourneyDetail> journeyDetail) async {
     var response = await getJourneyDetail(departure.journeyDetailRef, departure.journeyId);
     journeyDetail.element = response?.journeyDetail;
@@ -530,7 +530,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
                         SliverFillRemaining(
                             child: departureBoardWithTs.connectionState == ConnectionState.waiting
                                 ? loadingPage()
-                                : errorPage(() => _updateDepartureBoard(streamController, stopId, dateTime)))
+                                : ErrorPage(() => _updateDepartureBoard(streamController, stopId, dateTime)))
                       ].insertIf(extraSliver != null, 1, extraSliver));
                     }
                     var bgLuminance = Theme.of(context).cardColor.computeLuminance();
@@ -560,8 +560,8 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
         });
   }
 
-  void _updateDepartureBoard(StreamController streamController, int stopId, DateTime? dateTime) async {
-    getDepartureBoard(streamController, stopId, dateTime, departureBoardOptions, null);
+  Future<void> _updateDepartureBoard(StreamController streamController, int stopId, DateTime? dateTime) async {
+    await getDepartureBoard(streamController, stopId, dateTime, departureBoardOptions, null);
   }
 
   void _showJourneyDetailSheet(Departure departure) {
@@ -585,7 +585,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
                   builder: (context, journeyDetailWithTs) {
                     if (journeyDetailWithTs.connectionState == ConnectionState.waiting) return loadingPage();
                     if (!journeyDetailWithTs.hasData) {
-                      return errorPage(() => _updateJourneyDetail(streamController, departure, journeyDetail));
+                      return ErrorPage(() => _updateJourneyDetail(streamController, departure, journeyDetail));
                     }
                     var bgLuminance = Theme.of(context).cardColor.computeLuminance();
                     return CustomScrollView(controller: scrollController, slivers: [

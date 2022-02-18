@@ -1,4 +1,5 @@
 import 'package:collection/collection.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
@@ -301,18 +302,36 @@ Color? tryFromHex(String? hexString) {
   return fromHex(hexString);
 }
 
-Widget errorPage(VoidCallback onRefresh) {
-  return SafeArea(
-    child: Center(
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      const Icon(Icons.error_outline, size: 32),
-      const SizedBox(height: 12),
-      const Text('Det är inte alltid trafiken rullar på som den ska.'),
-      const Text('Kunde inte få kontakt med Västtrafik för tillfället.'),
-      const SizedBox(height: 24),
-      ElevatedButton(onPressed: onRefresh, child: const Text('Försök igen'))
-    ])),
-  );
+class ErrorPage extends StatefulWidget {
+  final AsyncCallback onRefresh;
+
+  const ErrorPage(this.onRefresh, {Key? key}) : super(key: key);
+
+  @override
+  State<ErrorPage> createState() => _ErrorPageState();
+}
+
+class _ErrorPageState extends State<ErrorPage> {
+  bool loading = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return loading ? loadingPage() : SafeArea(
+      child: Center(
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const Icon(Icons.error_outline, size: 32),
+            const SizedBox(height: 12),
+            const Text('Det är inte alltid trafiken rullar på som den ska.'),
+            const Text('Kunde inte få kontakt med Västtrafik för tillfället.'),
+            const SizedBox(height: 24),
+            ElevatedButton(onPressed: () async {
+              setState(() => loading = true);
+              widget.onRefresh().whenComplete(() => setState(() => loading = false));
+            }
+            , child: const Text('Försök igen'))
+          ])),
+    );
+  }
 }
 
 Widget noDataPage(String message) {

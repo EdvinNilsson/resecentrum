@@ -79,7 +79,7 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
           child: StreamBuilder<DepartureBoardWithTrafficSituations?>(
               builder: (context, departureBoard) {
                 if (departureBoard.connectionState == ConnectionState.waiting) return loadingPage();
-                if (!departureBoard.hasData) return errorPage(_updateDepartureBoard);
+                if (!departureBoard.hasData) return ErrorPage(_updateDepartureBoard);
                 var bgLuminance = Theme.of(context).cardColor.computeLuminance();
                 return CustomScrollView(slivers: [
                   SliverSafeArea(
