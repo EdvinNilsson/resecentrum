@@ -342,7 +342,7 @@ Widget noDataPage(String message) {
     child: Center(
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       const Icon(Icons.directions_off, size: 32),
-      const SizedBox(height: 12),
+      const SizedBox(height: 16),
       Text(message),
     ])),
   );

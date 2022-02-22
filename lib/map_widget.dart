@@ -596,7 +596,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
                             children: [
                               lineIconFromDeparture(departure, bgLuminance, context),
                               const SizedBox(width: 12),
-                              Expanded(child: Text(departure.direction, overflow: TextOverflow.fade))
+                              Expanded(child: highlightFirstPart(departure.direction, overflow: TextOverflow.fade))
                             ],
                           ),
                           pinned: true,
