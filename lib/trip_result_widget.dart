@@ -56,8 +56,15 @@ class TripResultWidget extends StatelessWidget {
                         sliver: SliverList(
                             delegate: SliverChildBuilderDelegate((context, i) {
                           if (i == tripList.data!.length) {
-                            _addTrips(tripList.data!.last.leg.first.origin.dateTime.add(const Duration(minutes: 1)));
-                            return Container(child: loadingPage(), constraints: const BoxConstraints(minHeight: 80));
+                            return FutureBuilder(
+                                future: _addTrips(
+                                    tripList.data!.last.leg.first.origin.dateTime.add(const Duration(minutes: 1))),
+                                builder: (context, snapshot) {
+                                  return snapshot.connectionState == ConnectionState.waiting
+                                      ? Container(
+                                          child: loadingPage(), constraints: const BoxConstraints(minHeight: 80))
+                                      : Container();
+                                });
                           }
                           var trip = tripList.data!.elementAt(i);
                           var tripTime = getTripTime(trip);
@@ -157,7 +164,7 @@ class TripResultWidget extends StatelessWidget {
         ));
   }
 
-  Future<Iterable<Trip>?> _getTrip(DateTime? dateTime) async {
+  Future<Iterable<Trip>?> _getTrip(DateTime? dateTime, {bool addMore = false}) async {
     return await reseplaneraren.getTrip(
       originId: _from is StopLocation ? (_from as StopLocation).id : null,
       destId: _to is StopLocation ? (_to as StopLocation).id : null,
@@ -179,7 +186,7 @@ class TripResultWidget extends StatelessWidget {
       useBoat: !_tripOptions.toggleVehicleOptions.isSelected[4] ? false : null,
       viaId: (_tripOptions.viaFieldController.location as StopLocation?)?.id,
       needGeo: true,
-      searchForArrival: _searchForArrival,
+      searchForArrival: addMore ? null : _searchForArrival,
     );
   }
 
@@ -188,8 +195,10 @@ class TripResultWidget extends StatelessWidget {
     _streamController.add(_trips);
   }
 
-  void _addTrips(DateTime dateTime) async {
-    _trips = _trips?.followedBy(await _getTrip(dateTime) ?? []);
+  Future<void> _addTrips(DateTime dateTime) async {
+    var moreTrips = await _getTrip(dateTime, addMore: true);
+    if (moreTrips == null) return;
+    _trips = _trips?.followedBy(moreTrips);
     _streamController.add(_trips);
   }
 
