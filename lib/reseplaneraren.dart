@@ -411,8 +411,8 @@ class Reseplaneraren {
 
       for (int i = 0; i < stops.length; i++) {
         var stop = stopL.elementAt(i);
-        stops[i].arrCancelled = stop['aCncl'] ?? stop['dCncl'] ?? false;
-        stops[i].depCancelled = stop['dCncl'] ?? stop['aCncl'] ?? false;
+        stops[i].arrCancelled = stop['aCncl'] ?? (stop['aTimeS'] == null ? stop['dCncl'] : null) ?? false;
+        stops[i].depCancelled = stop['dCncl'] ?? (stop['dTimeS'] == null ? stop['aCncl'] : null) ?? false;
       }
 
       journeyDetail.stop = stops;
