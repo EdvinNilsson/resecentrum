@@ -145,7 +145,7 @@ class LocationSearcherWidget extends StatelessWidget {
 }
 
 IconData _getLocationIcon(Location location) {
-  if (location is StopLocation) return Icons.directions_bus;
+  if (location is StopLocation) return getStopIcon(location.id.toString());
   if (location is CoordLocation && location.type == 'POI') {
     return Icons.account_balance;
   }
