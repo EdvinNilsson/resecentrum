@@ -746,11 +746,6 @@ bool isPresent(DateTime startTime, DateTime? endTime, DateTime start, DateTime e
   return startTime.isBefore(end) && (endTime?.isAfter(start) ?? true);
 }
 
-DateTime nextDay(DateTime? dateTime) {
-  dateTime ??= DateTime.now();
-  return DateTime(dateTime.year, dateTime.month, dateTime.day + 1);
-}
-
 Widget highlightFirstPart(String text, {TextStyle? style, double? textScaleFactor, TextOverflow? overflow}) {
   return Builder(
       builder: (BuildContext context) => Text.rich(highlightFirstPartSpan(text, style, context),

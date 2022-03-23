@@ -303,7 +303,7 @@ class _TripHistoryWidgetState extends State<TripHistoryWidget> {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              Icon(Icons.directions, color: Theme.of(context).hintColor), // route_outlined
+              Icon(Icons.route, color: Theme.of(context).hintColor),
               const SizedBox(width: 12),
               Expanded(
                   child: Column(

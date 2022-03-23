@@ -2,11 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:resecentrum/options_panel.dart';
 
 import 'extensions.dart';
 import 'journey_detail_widget.dart';
 import 'map_widget.dart';
+import 'options_panel.dart';
 import 'reseplaneraren.dart';
 import 'utils.dart';
 
@@ -205,7 +205,15 @@ class TripDetailWidget extends StatelessWidget {
       child: Row(
         children: [
           const SizedBox(width: 74),
-          Text('${getDurationString(duration)}, $numberOfStops ${numberOfStops > 1 ? 'hållplatser' : 'hållplats'}',
+          Text(
+              '${getDurationString(duration)}, $numberOfStops ' +
+                  (isTrainType(leg.type)
+                      ? numberOfStops > 1
+                          ? 'stationer'
+                          : 'station'
+                      : numberOfStops > 1
+                          ? 'hållplatser'
+                          : 'hållplats'),
               style: TextStyle(color: Theme.of(context).hintColor))
         ],
       ),
@@ -280,7 +288,7 @@ class TripDetailWidget extends StatelessWidget {
   Future<Widget?> _walkValidation(Future<double?> walkDistance, Duration duration, bool transfer) async {
     var walkSpeed = _walkSpeed(await walkDistance, duration);
     const String text = 'Risk för att missa anslutningen';
-    if (duration < const Duration(minutes: 0) || walkSpeed > 10) {
+    if (duration <= const Duration(minutes: 0) || walkSpeed > 10) {
       return iconAndText(Icons.warning, text, gap: 10, iconColor: Colors.red);
     }
     if (walkSpeed > 6 || duration <= Duration(minutes: (_changeMarginOptions.minutes ?? 5) ~/ 2)) {

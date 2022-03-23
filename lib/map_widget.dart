@@ -277,7 +277,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
 
     if (journeyPart != null) {
       Stop firstStop = journeyDetail.stop.firstWhere((stop) => stop.routeIdx == journeyPart.fromIdx);
-      Stop lastStop = journeyDetail.stop.firstWhere((stop) => stop.routeIdx == journeyPart.toIdx);
+      Stop lastStop = journeyDetail.stop.lastWhere((stop) => stop.routeIdx == journeyPart.toIdx);
 
       for (var points in geometry) {
         bool draw = false;
@@ -647,11 +647,8 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
       case 'VAS':
         return 'train';
       case 'LDT':
-        return 'railway';
       case 'REG':
         return 'railway';
-      case 'BUS':
-        return 'bus';
       case 'BOAT':
         return 'boat';
       case 'TRAM':

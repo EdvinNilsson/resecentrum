@@ -2,8 +2,9 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_custom_tabs/flutter_custom_tabs.dart';
-import 'package:resecentrum/utils.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+
+import 'utils.dart';
 
 class TrafficInformationWidget extends StatefulWidget {
   const TrafficInformationWidget({Key? key}) : super(key: key);

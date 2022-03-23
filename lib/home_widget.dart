@@ -3,11 +3,11 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:resecentrum/main.dart';
 import 'package:uni_links/uni_links.dart';
 
 import 'departure_board_widget.dart';
 import 'extensions.dart';
+import 'main.dart';
 import 'map_widget.dart';
 import 'reseplaneraren.dart';
 import 'traffic_information_widget.dart';

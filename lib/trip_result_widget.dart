@@ -236,7 +236,7 @@ class TripResultWidget extends StatelessWidget {
 
   Future<void> _addTrips(DateTime dateTime) async {
     var moreTrips = await _getTrip(dateTime, addMore: true);
-    if (moreTrips == null) return;
+    if (moreTrips == null || moreTrips.isEmpty) return;
     _trips = _trips?.followedBy(moreTrips);
     _streamController.add(_trips);
   }

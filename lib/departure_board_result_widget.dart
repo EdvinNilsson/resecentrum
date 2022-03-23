@@ -152,7 +152,7 @@ Future<void> getDepartureBoard(StreamController streamController, int stopId, Da
   if (departureBoardOptions.includeArrivalOptions.includeArrivals && direction == null) {
     arrivalsRequest = reseplaneraren.getArrivalBoard(
       stopId,
-      dateTime: dateTime,
+      dateTime: dateTime ?? DateTime.now(),
       timeSpan: timeSpan,
       useTram: departureBoardOptions.toggleVehicleOptions.isSelected[0] ? null : false,
       useBus: departureBoardOptions.toggleVehicleOptions.isSelected[1] ? null : false,
@@ -235,6 +235,7 @@ Future<void> getDepartureBoard(StreamController streamController, int stopId, Da
 
     // If the next 20 departures does not include all departures within the next 15 minutes.
     if (result.isNotEmpty &&
+        result.length >= 20 &&
         result.last.dateTime.isBefore((dateTime ?? DateTime.now()).add(const Duration(minutes: 15))) &&
         !secondPass) {
       getDepartureBoard(streamController, stopId, dateTime, departureBoardOptions, direction, lat, long,

@@ -51,7 +51,7 @@ class VehiclePositionsService {
     }
   }
 
-  Future<Iterable<VehiclePosition>?> getPositions(Iterable<String> journeyIds) async {
+  Future<Iterable<VehiclePosition>?> getPositions(List<String> journeyIds) async {
     return await _callApi('/fpos/v1/positions', {'journeyIds': journeyIds}, (result) {
       return result.data.map<VehiclePosition>((d) => VehiclePosition(d));
     });
