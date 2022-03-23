@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:collection/collection.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -23,6 +24,9 @@ class Reseplaneraren {
 
   final Dio _tsDio =
       Dio(BaseOptions(baseUrl: 'https://api.vasttrafik.se/ts/v1', connectTimeout: 10000, receiveTimeout: 10000));
+
+  final Dio _mgateDio =
+      Dio(BaseOptions(baseUrl: 'https://rrp.vasttrafik.se/bin/mgate.exe', connectTimeout: 5000, receiveTimeout: 5000));
 
   Future<T?> _callApi<T>(String path, Map<String, dynamic>? queryParameters, T Function(Response) generator,
       {bool secondTry = false, Dio? altDio, Duration retry = const Duration(seconds: 1, milliseconds: 500)}) async {
@@ -334,6 +338,88 @@ class Reseplaneraren {
       return data.map((t) => TrafficSituation(t));
     }, altDio: _tsDio);
   }
+
+  Future<void> setCancelledStops(
+      DateTime evaDateTime, int evaStopId, Future<JourneyDetail?> journeyDetailFuture, String journeyId) async {
+    try {
+      int extId = evaStopId % 10000000 - evaStopId % 1000;
+      String date = DateFormat('yyyyMMdd').format(evaDateTime);
+      String time = DateFormat('HHmmss').format(evaDateTime);
+
+      var stationBoard = await _mgateDio.post('/', queryParameters: {
+        'rnd': DateTime.now().millisecondsSinceEpoch
+      }, data: {
+        'ver': '1.54',
+        'lang': 'swe',
+        'auth': {'type': 'AID', 'aid': 'webwf4h674678g4fh'},
+        'client': {'type': 'WEB'},
+        'svcReqL': [
+          {
+            'req': {
+              'stbLoc': {'extId': extId},
+              'type': 'DEP',
+              'date': date,
+              'time': time,
+              'dur': 1
+            },
+            'meth': 'StationBoard'
+          },
+          {
+            'req': {
+              'stbLoc': {'extId': extId},
+              'type': 'ARR',
+              'date': date,
+              'time': time,
+              'dur': 1
+            },
+            'meth': 'StationBoard'
+          }
+        ]
+      });
+
+      Iterable<int> indices = stationBoard.data['svcResL'].map<int>(
+          (r) => (r['res']['common']['prodL']?.indexWhere((l) => l['prodCtx']['matchId'] == journeyId) ?? -1) as int);
+
+      var journeys = indices
+          .mapIndexed((j, i) => i >= 0 ? stationBoard.data['svcResL'][j]['res']['jnyL'][i] : null)
+          .where((j) => j != null);
+
+      if (!journeys.any((j) => (j['isCncl'] ?? false) || (j['isPartCncl'] ?? false))) return;
+
+      var journeyDetails = await _mgateDio.post('/', queryParameters: {
+        'rnd': DateTime.now().millisecondsSinceEpoch
+      }, data: {
+        'ver': '1.54',
+        'lang': 'swe',
+        'auth': {'type': 'AID', 'aid': 'webwf4h674678g4fh'},
+        'client': {'type': 'WEB'},
+        'svcReqL': [
+          {
+            'req': {'jid': journeys.first['jid'], 'getPolyline': false},
+            'meth': 'JourneyDetails'
+          }
+        ]
+      });
+
+      Iterable stopL = journeyDetails.data['svcResL'][0]['res']['journey']['stopL'];
+
+      var journeyDetail = await journeyDetailFuture;
+
+      if (journeyDetail == null) return;
+
+      var stops = journeyDetail.stop.toList(growable: false);
+
+      for (int i = 0; i < stops.length; i++) {
+        var stop = stopL.elementAt(i);
+        stops[i].arrCancelled = stop['aCncl'] ?? stop['dCncl'] ?? false;
+        stops[i].depCancelled = stop['dCncl'] ?? stop['aCncl'] ?? false;
+      }
+
+      journeyDetail.stop = stops;
+    } catch (e) {
+      if (kDebugMode) print(e);
+    }
+  }
 }
 
 List<dynamic> forceList(dynamic a) {
@@ -524,6 +610,8 @@ class Stop {
   late DateTime? rtDepTime;
   late String name;
   late double lat;
+  bool arrCancelled = false;
+  bool depCancelled = false;
 
   Stop(dynamic s) {
     routeIdx = int.parse(s['routeIdx']);
