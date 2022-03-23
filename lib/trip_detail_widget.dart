@@ -118,7 +118,7 @@ class TripDetailWidget extends StatelessWidget {
       .map((l) => l.journeyDetailRef == null
           ? MapJourney(walk: true, geometry: l.cachedGeometry, geometryRef: l.geometryRef)
           : MapJourney(
-              journeyDetailRef: l.journeyDetailRef,
+              journeyDetailRef: JourneyDetailRef.fromLeg(l),
               journeyPart: IdxJourneyPart(l.origin.routeIdx!, l.destination.routeIdx!)))
       .toList(growable: false);
 
@@ -148,7 +148,9 @@ class TripDetailWidget extends StatelessWidget {
                   leg.journeyId!,
                   leg.type,
                   leg.name,
-                  leg.journeyNumber);
+                  leg.journeyNumber,
+                  leg.origin.id!,
+                  leg.origin.dateTime);
             }));
           },
           onLongPress: leg.journeyDetailRef == null
@@ -183,15 +185,15 @@ class TripDetailWidget extends StatelessWidget {
               margin: const EdgeInsets.fromLTRB(8, 0, 0, 0)),
         ],
       ),
-      displayNotes(context, leg.notes),
+      displayTSs(leg.notes),
       leg.notes.isEmpty ? const SizedBox(height: 16) : const Divider(),
       _stopHeader(leg.origin),
-      displayNotes(context, leg.origin.notes),
+      displayTSs(leg.origin.notes),
       const Divider(),
       _legDetail(leg, context),
       const Divider(),
       _stopHeader(leg.destination),
-      displayNotes(context, leg.destination.notes)
+      displayTSs(leg.destination.notes)
     ]);
   }
 
@@ -288,8 +290,8 @@ class TripDetailWidget extends StatelessWidget {
   }
 
   Widget _stopHeader(TripLocation location) {
-    return stopRow(location.dateTime, getTripLocationDelay(location), location.name, location.rtTrack ?? location.track,
-        cancelled: location.cancelled);
+    return stopRow(simpleTimeWidget(location.dateTime, getTripLocationDelay(location), location.cancelled),
+        location.name, location.track, location.rtTrack);
   }
 
   Future<double?> _getWalkDistance(Leg? leg) async {
@@ -317,16 +319,18 @@ class TripDetailWidget extends StatelessWidget {
 
     await Future.wait(_trip.leg
         .where((leg) => leg.journeyDetailRef != null)
-        .map((leg) => reseplaneraren.getJourneyDetail(leg.journeyDetailRef!).then((jt) {
+        .map((leg) => getJourneyDetailExtra(JourneyDetailRef.fromLeg(leg)).then((jt) {
               if (jt == null) return;
 
               Stop? origin = jt.stop.firstWhere((s) => s.routeIdx == leg.origin.routeIdx!);
               leg.origin.rtDateTime = origin.rtDepTime ?? origin.rtArrTime;
               leg.origin.rtTrack = origin.rtTrack;
+              leg.origin.cancelled = origin.depCancelled;
 
               Stop? destination = jt.stop.firstWhere((s) => s.routeIdx == leg.destination.routeIdx!);
               leg.destination.rtDateTime = destination.rtArrTime ?? destination.rtDepTime;
               leg.destination.rtTrack = destination.rtTrack;
+              leg.destination.cancelled = destination.arrCancelled;
             })));
 
     _streamController.add(_trip);

@@ -3,8 +3,6 @@ import 'dart:ui';
 import 'package:intl/intl.dart';
 import 'package:maplibre_gl/mapbox_gl.dart';
 
-import 'reseplaneraren.dart';
-
 extension IterableExt<T> on Iterable<T> {
   T? tryElementAt(int index) {
     try {
@@ -64,13 +62,13 @@ extension TimeExt on DateTime {
   String time() {
     return DateFormat.Hm().format(this);
   }
-}
 
-extension LegExt on Leg {
-  Duration travelTime() {
-    var start = origin.getDateTime();
-    var end = destination.getDateTime();
-    return end.difference(start);
+  DateTime startOfDay() {
+    return DateTime(year, month, day);
+  }
+
+  DateTime startONextDay() {
+    return DateTime(year, month, day + 1);
   }
 }
 

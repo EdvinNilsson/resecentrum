@@ -6,63 +6,58 @@ import 'package:intl/intl.dart';
 import 'package:maplibre_gl/mapbox_gl.dart';
 
 import 'extensions.dart';
+import 'map_widget.dart';
 import 'reseplaneraren.dart';
+import 'trafikverket.dart';
 import 'vehicle_positions_service.dart';
 
-String getDelayString(int? delay) {
+String getDelayString(int? delay, {DepartureState? state}) {
+  if (state == DepartureState.unknownTime) return '+?';
   if (delay == null) return '';
-  return delay < 0 ? delay.toString() : '+' + delay.toString();
+  String str = delay.abs() < 60 ? delay.toString() : '${delay ~/ 60}h${delay % 60 != 0 ? delay.abs() % 60 : ''}';
+  return delay < 0 ? str : '+' + str;
 }
 
-Future<bool> hasDeparted(Departure departure, double lat, double long) async {
-  var pos = await vehiclePositionsService.getPositions([departure.journeyId]);
-  var vehicle = pos?.firstWhereOrNull((v) => v.journeyId == departure.journeyId);
-  if (vehicle != null) {
-    var distance = Geolocator.distanceBetween(vehicle.lat, vehicle.long, lat, long);
-    if ((distance > 150 || vehicle.speed > 20) &&
-        vehicle.updatedAt.difference(DateTime.now()) < const Duration(minutes: 1)) return true;
-  }
+bool hasDeparted(VehiclePosition vehicle, double lat, double long) {
+  var distance = Geolocator.distanceBetween(vehicle.lat, vehicle.long, lat, long);
+  if ((distance > 150 || vehicle.speed > 20) &&
+      vehicle.updatedAt.difference(DateTime.now()) < const Duration(minutes: 1)) return true;
   return false;
 }
 
-CountdownResponse getCountdown(Departure departure) {
-  if (departure.cancelled) return CountdownResponse('inställd');
-  var realtime = departure.rtDateTime != null;
-  var timeLeft = departure.getDateTime().difference(DateTime.now());
-  var minutesLeft = timeLeft.minutesRounded();
-  if (minutesLeft.abs() > 100) {
-    return CountdownResponse(minutesLeft.abs() >= 5940 ? '${timeLeft.inDays}d' : '${timeLeft.hoursRounded()}h');
-  }
-  bool needExtraCheck = !realtime && minutesLeft >= -1 && minutesLeft <= 5;
-  if (!realtime && minutesLeft > 0) return CountdownResponse('ca $minutesLeft', needExtraCheck);
-  if (minutesLeft == 0 || minutesLeft == -1) return CountdownResponse('nu', needExtraCheck);
-  return CountdownResponse(minutesLeft.toString(), needExtraCheck);
+Text _countdownText(String text, {TextStyle? style}) =>
+    Text(text, textAlign: TextAlign.center, style: style ?? const TextStyle(fontWeight: FontWeight.bold));
+
+Widget getCountdown(Departure departure) {
+  return Builder(builder: (context) {
+    if (departure.state == DepartureState.replacementBus) {
+      return _countdownText('Buss', style: TextStyle(color: orange(context)));
+    }
+    if (departure.state == DepartureState.replacementTaxi) {
+      return _countdownText('Taxi', style: TextStyle(color: orange(context)));
+    }
+    if (departure.state == DepartureState.unknownTime) return _countdownText('?');
+    if (departure.state == DepartureState.departed) return _countdownText('Avg.', style: const TextStyle());
+    if (departure.state == DepartureState.atStation) return _countdownText('nu');
+    if (departure.cancelled) return _countdownText('Inst.', style: const TextStyle(color: Colors.red));
+
+    var realtime = departure.rtDateTime != null;
+    var timeLeft = departure.getDateTime().difference(DateTime.now());
+    var minutesLeft = timeLeft.minutesRounded();
+    if (minutesLeft.abs() > 100) {
+      return _countdownText(minutesLeft.abs() >= 5940 ? '${timeLeft.inDays}d' : '${timeLeft.hoursRounded()}h');
+    }
+    if (!realtime && minutesLeft > 0) return _countdownText('ca $minutesLeft');
+    if (minutesLeft == 0 || minutesLeft == -1) return _countdownText('nu');
+    return _countdownText(minutesLeft.toString());
+  });
 }
 
-class CountdownResponse {
-  String text;
-  bool needExtraCheck;
+int? getDelay(DateTime dateTime, DateTime? rtDateTime) => rtDateTime?.difference(dateTime).inMinutes;
 
-  CountdownResponse(this.text, [this.needExtraCheck = false]);
-}
+int? getDepartureDelay(Departure departure) => getDelay(departure.dateTime, departure.rtDateTime);
 
-int? getDepartureDelay(Departure departure) {
-  try {
-    var difference = departure.rtDateTime!.difference(departure.dateTime);
-    return difference.inMinutes;
-  } catch (e) {
-    return null;
-  }
-}
-
-int? getTripLocationDelay(TripLocation departure) {
-  try {
-    var difference = departure.rtDateTime!.difference(departure.dateTime);
-    return difference.inMinutes;
-  } catch (e) {
-    return null;
-  }
-}
+int? getTripLocationDelay(TripLocation departure) => getDelay(departure.dateTime, departure.rtDateTime);
 
 Duration getTripTime(Trip trip) {
   DateTime startTime = trip.leg.first.origin.getDateTime();
@@ -88,73 +83,107 @@ String getTripCountdown(DateTime? departure) {
   return ', nu';
 }
 
-int? getStopDelay(Stop stop) {
-  try {
-    var difference = (stop.rtDepTime ?? stop.rtArrTime!).difference(stop.depDateTime ?? stop.arrDateTime!);
-    return difference.inMinutes;
-  } catch (e) {
-    return null;
-  }
-}
-
 Widget stopRowFromStop(Stop stop,
-        {bool cancelled = false,
-        bool bold = false,
-        bool alightingOnly = false,
-        bool boardingOnly = false,
-        Icon? noteIcon,
-        BoxConstraints? constraints}) =>
-    stopRow(stop.depDateTime ?? stop.arrDateTime!, getStopDelay(stop), stop.name, stop.rtTrack ?? stop.track,
-        cancelled: cancelled,
+    {bool bold = false,
+    bool alightingOnly = false,
+    bool boardingOnly = false,
+    Icon? noteIcon,
+    BoxConstraints? constraints,
+    bool useHintColor = false}) {
+  return Builder(builder: (context) {
+    var textSpans = <TextSpan>[];
+
+    void addTimeText(DateTime time, DateTime? rtTime, bool cancelled) {
+      TextStyle style = TextStyle(color: rtTime == null && useHintColor ? Theme.of(context).hintColor : null);
+      if (cancelled) {
+        style = style.copyWith(color: Colors.red, decoration: TextDecoration.lineThrough);
+        if (stop.state == DepartureState.replacementTaxi || stop.state == DepartureState.replacementBus) {
+          style = style.copyWith(color: orange(context));
+        }
+      }
+
+      textSpans.add(TextSpan(text: time.time(), style: style.copyWith(fontWeight: FontWeight.bold)));
+      if (rtTime != null) {
+        textSpans.add(TextSpan(text: getDelayString(getDelay(time, rtTime), state: stop.state), style: style));
+      }
+    }
+
+    if (stop.depDateTime != null &&
+        stop.arrDateTime != null &&
+        (stop.depDateTime != stop.arrDateTime || stop.depCancelled != stop.arrCancelled)) {
+      addTimeText(stop.arrDateTime!, stop.rtArrTime, stop.arrCancelled);
+      textSpans.add(const TextSpan(text: '\n'));
+      addTimeText(stop.depDateTime!, stop.rtDepTime, stop.depCancelled);
+    } else {
+      addTimeText(stop.depDateTime ?? stop.arrDateTime!, stop.rtDepTime ?? stop.rtArrTime,
+          stop.depDateTime != null ? stop.depCancelled : stop.arrCancelled);
+    }
+
+    var text = Text.rich(TextSpan(text: '', children: textSpans));
+
+    return stopRow(text, stop.name, stop.track, stop.rtTrack,
         bold: bold,
         alightingOnly: alightingOnly,
         boardingOnly: boardingOnly,
         noteIcon: noteIcon,
-        constraints: constraints);
+        constraints: constraints,
+        rtInfo: !useHintColor || (stop.rtDepTime ?? stop.rtArrTime) != null);
+  });
+}
 
-Widget stopRow(DateTime dateTime, int? delay, String name, String? track,
-    {bool cancelled = false,
-    bool bold = false,
+Widget simpleTimeWidget(DateTime dateTime, int? delay, bool cancelled) {
+  return Row(
+    children: [
+      Text(dateTime.time(),
+          style: cancelled
+              ? cancelledTextStyle.copyWith(fontWeight: FontWeight.bold)
+              : const TextStyle(fontWeight: FontWeight.bold)),
+      Text(getDelayString(delay), style: cancelled ? cancelledTextStyle : null)
+    ],
+  );
+}
+
+Widget stopRow(Widget time, String name, String? track, String? rtTrack,
+    {bool bold = false,
     bool alightingOnly = false,
     bool boardingOnly = false,
     Icon? noteIcon,
-    BoxConstraints? constraints}) {
+    BoxConstraints? constraints,
+    bool rtInfo = true}) {
   String stopName = name.firstPart();
   if (alightingOnly) stopName = '$stopName (endast avstigning)';
   if (boardingOnly) stopName = '$stopName (endast påstigning)';
-  return Container(
-      constraints: constraints,
-      margin: const EdgeInsets.all(5),
-      child: Row(
-        children: [
-          Container(
-              child: Row(
-                children: [
-                  Text(dateTime.time(),
-                      style: cancelled
-                          ? cancelledTextStyle.copyWith(fontWeight: FontWeight.bold)
-                          : const TextStyle(fontWeight: FontWeight.bold)),
-                  Text(getDelayString(delay), style: cancelled ? cancelledTextStyle : null)
-                ],
-              ),
-              constraints: const BoxConstraints(minWidth: 64),
-              margin: const EdgeInsets.fromLTRB(0, 0, 10, 0)),
-          Expanded(
-              child: Text(stopName,
-                  overflow: TextOverflow.fade, style: bold ? const TextStyle(fontWeight: FontWeight.bold) : null)),
-          if (noteIcon != null)
+  return Builder(builder: (context) {
+    return Container(
+        constraints: constraints,
+        margin: const EdgeInsets.all(5),
+        child: Row(
+          children: [
             Container(
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              child: noteIcon,
-            ),
-          Container(
-              constraints: const BoxConstraints(minWidth: 20),
-              child: Text(
-                track ?? '',
-                textAlign: TextAlign.right,
-              ))
-        ],
-      ));
+                child: time,
+                constraints: const BoxConstraints(minWidth: 64),
+                margin: const EdgeInsets.fromLTRB(0, 0, 10, 0)),
+            Expanded(
+                child: Text(stopName,
+                    overflow: TextOverflow.fade,
+                    style: TextStyle(
+                        fontWeight: bold ? FontWeight.bold : null,
+                        color: !rtInfo ? Theme.of(context).hintColor : null))),
+            if (noteIcon != null)
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                child: noteIcon,
+              ),
+            Container(
+                constraints: const BoxConstraints(minWidth: 20),
+                child: rtTrack != null
+                    ? trackChange(rtTrack)
+                    : Text(rtTrack ?? track ?? '',
+                        textAlign: TextAlign.right,
+                        style: !rtInfo ? TextStyle(color: Theme.of(context).hintColor) : null))
+          ],
+        ));
+  });
 }
 
 Widget accessibilityIcon(String? accessibility, DateTime? rtDateTime, {EdgeInsetsGeometry? margin}) {
@@ -189,62 +218,43 @@ int getNotePriority(String severity) {
   }
 }
 
-Widget displayNotes(BuildContext context, Iterable<Note> notes) {
-  if (notes.isEmpty) return Container();
-  return Padding(
-    padding: const EdgeInsets.all(5),
-    child: Column(
-        children: notes
-            .map((note) => Padding(
-                  padding: const EdgeInsets.all(5),
-                  child: Row(
-                    children: [
-                      getNoteIcon(note.severity),
-                      const SizedBox(width: 20),
-                      Expanded(
-                          child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(note.text ?? '', style: TextStyle(color: Theme.of(context).hintColor)))),
-                    ],
-                  ),
-                ))
-            .toList(growable: false)),
-  );
+String? getHighestPriority(String? a, String? b) {
+  if (a == null) return b;
+  if (b == null) return a;
+  return getNotePriority(a) < getNotePriority(b) ? a : b;
 }
 
-Widget displayTrafficSituation(
-    BuildContext context, TrafficSituation trafficSituation, bool boldTitle, bool showAffectedStop) {
-  showAffectedStop = showAffectedStop &&
-      trafficSituation.affectedStopPoints.map((s) => s.name).toSet().length == 1 &&
-      !trafficSituation.title.contains(trafficSituation.affectedStopPoints.first.name);
-  return Padding(
-    padding: const EdgeInsets.all(5),
-    child: Row(
-      children: [
-        getNoteIcon(trafficSituation.severity),
-        const SizedBox(width: 20),
-        Expanded(
-          child: Column(
-            children: [
-              Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                      showAffectedStop
-                          ? '${trafficSituation.affectedStopPoints.first.name}: ${trafficSituation.title}'
-                          : trafficSituation.title,
-                      style: boldTitle ? const TextStyle(fontWeight: FontWeight.bold) : null)),
-              if (!trafficSituation.description.isNullOrEmpty) const SizedBox(height: 5),
-              if (!trafficSituation.description.isNullOrEmpty)
-                Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(trafficSituation.description!,
-                        style: TextStyle(color: Theme.of(context).hintColor), textAlign: TextAlign.left)),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
+abstract class TS {
+  Widget display(BuildContext context, {bool boldTitle = false, bool showAffectedStop = false});
+}
+
+Widget displayTSs(Iterable<TS> ts) {
+  if (ts.isEmpty) return Container();
+  return Builder(builder: (BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(5),
+      child: Column(children: ts.map((t) => t.display(context)).toList(growable: false)),
+    );
+  });
+}
+
+const List<String> acronymWords = ['central', 'norra', 'södra', 'östra', 'västra'];
+const List<String> excludeWords = ['station', '(tåg)', 'central', 'resecentrum', 'city'];
+
+String shortStationName(String name, {bool useAcronyms = true}) {
+  var splits = name.firstPart().split(' ');
+  var result = [];
+
+  for (var word in splits) {
+    if (useAcronyms && acronymWords.contains(word.toLowerCase())) {
+      result.add(word.substring(0, 1).toUpperCase());
+      continue;
+    }
+    if (excludeWords.contains(word.toLowerCase())) continue;
+    result.add(word);
+  }
+
+  return result.join(' ');
 }
 
 BoxDecoration lineBoxDecoration(Color bgColor, Color fgColor, double bgLuminance, BuildContext context) {
@@ -286,6 +296,35 @@ Widget lineIcon(String sname, Color fgColor, Color bgColor, double bgLuminance, 
         textAlign: TextAlign.center,
       ),
     ),
+  );
+}
+
+Widget trackChange(String rtTrack) {
+  var text = Text(
+    rtTrack,
+    style: const TextStyle(color: Colors.black),
+    textAlign: TextAlign.center,
+  );
+
+  return Stack(
+    alignment: AlignmentDirectional.centerEnd,
+    clipBehavior: Clip.none,
+    children: [
+      Positioned(
+        right: -5,
+        child: PhysicalModel(
+          elevation: 1,
+          color: Colors.yellow,
+          borderRadius: BorderRadius.circular(3),
+          child: Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(3), color: Colors.yellow),
+            child: Opacity(child: text, opacity: 0),
+          ),
+        ),
+      ),
+      text,
+    ],
   );
 }
 
@@ -365,6 +404,9 @@ Widget loadingPage() {
 Color? cardBackgroundColor(BuildContext context) {
   return Theme.of(context).brightness == Brightness.light ? Colors.grey.shade100 : Theme.of(context).canvasColor;
 }
+
+Color orange(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.light ? Colors.orange.shade800 : Colors.orange;
 
 const TextStyle cancelledTextStyle = TextStyle(color: Colors.red, decoration: TextDecoration.lineThrough);
 
@@ -687,15 +729,15 @@ class SeparatedSliverList extends SliverList {
             }, childCount: itemCount * 2 - 1));
 }
 
-RenderObjectWidget trafficSituationList(Iterable<TrafficSituation> trafficSituations,
+RenderObjectWidget trafficSituationList(Iterable<TS> ts,
     {bool boldTitle = false, EdgeInsetsGeometry padding = const EdgeInsets.all(10), bool showAffectedStop = true}) {
-  if (trafficSituations.isEmpty) return SliverToBoxAdapter(child: Container());
+  if (ts.isEmpty) return SliverToBoxAdapter(child: Container());
   return SliverPadding(
     padding: padding,
     sliver: SliverList(
       delegate: SliverChildBuilderDelegate((context, i) {
-        return displayTrafficSituation(context, trafficSituations.elementAt(i), boldTitle, showAffectedStop);
-      }, childCount: trafficSituations.length),
+        return ts.elementAt(i).display(context, boldTitle: boldTitle, showAffectedStop: showAffectedStop);
+      }, childCount: ts.length),
     ),
   );
 }
@@ -727,6 +769,80 @@ TextSpan highlightFirstPartSpan(String text, TextStyle? style, BuildContext cont
           : [
               TextSpan(text: ',' + textParts.sublist(1).join(','), style: style.copyWith(color: color?.withAlpha(153)))
             ]);
+}
+
+void setTrainInfo(Iterable<TrainAnnouncement> trainJourney, List<Stop> stops, List<Set<String>?>? stopNotesLowPriority,
+    List<Set<String>?>? stopNotesNormalPriority) {
+  for (int i = 0, stop = 0; i < trainJourney.length && stop < stops.length; i++) {
+    var activity = trainJourney.elementAt(i);
+    var next = trainJourney.tryElementAt(i + 1);
+    if (activity.activityType == 'Ankomst') {
+      if (!(stops[stop].arrDateTime?.isAtSameMomentAs(activity.advertisedTimeAtLocation) ?? false)) {
+        if (stops[stop].arrDateTime != null) stop++;
+        continue;
+      }
+      stops[stop].rtArrTime = activity.estimatedTimeAtLocation ??
+          activity.plannedEstimatedTimeAtLocation ??
+          activity.advertisedTimeAtLocation;
+      if (activity.timeAtLocation != null) stops[stop].rtArrTime = null;
+      if (activity.trackAtLocation != null) stops[stop].track = activity.trackAtLocation;
+      if (activity.deviation.contains('Spårändrat')) stops[stop].rtTrack = activity.trackAtLocation;
+      stops[stop].arrCancelled |= activity.canceled;
+    } else {
+      if (!(stops[stop].depDateTime?.isAtSameMomentAs(activity.advertisedTimeAtLocation) ?? false)) {
+        if (stops[stop].depDateTime != null) stop++;
+        continue;
+      }
+      stops[stop].rtDepTime = activity.estimatedTimeAtLocation ??
+          activity.plannedEstimatedTimeAtLocation ??
+          activity.advertisedTimeAtLocation;
+      if (activity.timeAtLocation != null) stops[stop].rtDepTime = null;
+      if (activity.trackAtLocation != null) stops[stop].track = activity.trackAtLocation;
+      if (activity.deviation.contains('Spårändrat')) stops[stop].rtTrack = activity.trackAtLocation;
+      stops[stop].depCancelled |= activity.canceled;
+    }
+
+    if (activity.deviation.contains('Invänta tid')) stops[stop].state = DepartureState.unknownTime;
+    if (activity.deviation.contains('Taxi ersätter')) stops[stop].state = DepartureState.replacementTaxi;
+    if (activity.deviation.contains('Buss ersätter')) stops[stop].state = DepartureState.replacementBus;
+
+    if (stopNotesLowPriority != null && stopNotesNormalPriority != null) {
+      if (stopNotesLowPriority[stop] == null) stopNotesLowPriority[stop] = {};
+      stopNotesLowPriority[stop]?.addAll(activity.otherInformation);
+      if (stopNotesNormalPriority[stop] == null) stopNotesNormalPriority[stop] = {};
+      stopNotesNormalPriority[stop]?.addAll(activity.deviation);
+    }
+
+    if (!(next?.advertisedTimeAtLocation.isAtSameMomentAs(stops[stop].depDateTime ?? stops[stop].arrDateTime!) ??
+        true)) {
+      stop++;
+    }
+  }
+}
+
+Future<JourneyDetail?> getJourneyDetailExtra(JourneyDetailRef ref) async {
+  var response = reseplaneraren.getJourneyDetail(ref.ref);
+
+  if (!isTrainType(ref.type)) {
+    await reseplaneraren.setCancelledStops(ref.evaDateTime, ref.evaId, response, ref.journeyId);
+  }
+
+  var journeyDetail = await response;
+  if (journeyDetail == null) return null;
+
+  if (isTrainType(ref.type)) {
+    await trafikverket
+        .getTrainJourney(
+            ref.journeyNumber!, journeyDetail.stop.first.depDateTime!, journeyDetail.stop.last.arrDateTime!)
+        .then((trainJourney) {
+      if (trainJourney == null) return;
+      var stops = journeyDetail.stop.toList(growable: false);
+      setTrainInfo(trainJourney, stops, null, null);
+      journeyDetail.stop = stops;
+    });
+  }
+
+  return journeyDetail;
 }
 
 class SystemGestureArea extends StatelessWidget {

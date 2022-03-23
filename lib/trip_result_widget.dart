@@ -9,6 +9,7 @@ import 'extensions.dart';
 import 'map_widget.dart';
 import 'options_panel.dart';
 import 'reseplaneraren.dart';
+import 'trafikverket.dart';
 import 'trip_detail_widget.dart';
 import 'utils.dart';
 
@@ -97,7 +98,7 @@ class TripResultWidget extends StatelessWidget {
                                             ? MapJourney(
                                                 walk: true, geometry: l.cachedGeometry, geometryRef: l.geometryRef!)
                                             : MapJourney(
-                                                journeyDetailRef: l.journeyDetailRef,
+                                                journeyDetailRef: JourneyDetailRef.fromLeg(l),
                                                 journeyPart:
                                                     IdxJourneyPart(l.origin.routeIdx!, l.destination.routeIdx!)))
                                         .toList(growable: false));
@@ -165,7 +166,7 @@ class TripResultWidget extends StatelessWidget {
   }
 
   Future<Iterable<Trip>?> _getTrip(DateTime? dateTime, {bool addMore = false}) async {
-    return await reseplaneraren.getTrip(
+    var trips = await reseplaneraren.getTrip(
       originId: _from is StopLocation ? (_from as StopLocation).id : null,
       destId: _to is StopLocation ? (_to as StopLocation).id : null,
       originCoordLat: _from is StopLocation ? null : _from.lat,
@@ -188,6 +189,44 @@ class TripResultWidget extends StatelessWidget {
       needGeo: true,
       searchForArrival: addMore ? null : _searchForArrival,
     );
+
+    if (trips != null && trips.any((t) => t.leg.any((l) => isTrainType(l.type)))) {
+      trips = trips.toList();
+      var trainLegs = trips.expand((t) => t.leg).where((l) => isTrainType(l.type));
+      var trainActivities = await trafikverket.getTrainTrips(
+          trainLegs.map((l) => TrainTripRequest(l.journeyNumber!, l.origin.dateTime, l.destination.dateTime)).toSet());
+
+      for (TrainAnnouncement activity in trainActivities ?? []) {
+        if (activity.activityType == 'Ankomst') {
+          var legs = trainLegs.where((l) =>
+              l.journeyNumber == activity.advertisedTrainIdent &&
+              l.destination.dateTime.isAtSameMomentAs(activity.advertisedTimeAtLocation));
+          for (var leg in legs) {
+            leg.destination.rtDateTime = activity.timeAtLocation ??
+                activity.estimatedTimeAtLocation ??
+                activity.plannedEstimatedTimeAtLocation ??
+                activity.advertisedTimeAtLocation;
+            leg.destination.track = activity.trackAtLocation;
+            leg.destination.cancelled |= activity.canceled;
+          }
+        } else {
+          var legs = trainLegs.where((l) =>
+              l.journeyNumber == activity.advertisedTrainIdent &&
+              l.origin.dateTime.isAtSameMomentAs(activity.advertisedTimeAtLocation));
+          for (var leg in legs) {
+            leg.origin.rtDateTime = activity.timeAtLocation ??
+                activity.estimatedTimeAtLocation ??
+                activity.plannedEstimatedTimeAtLocation ??
+                activity.advertisedTimeAtLocation;
+            leg.origin.track = activity.trackAtLocation;
+            leg.origin.cancelled |= activity.canceled;
+            if (activity.deviation.isNotEmpty) leg.direction = '${leg.direction}, ${activity.deviation.join(', ')}';
+          }
+        }
+      }
+    }
+
+    return trips;
   }
 
   Future<void> _updateTrip() async {

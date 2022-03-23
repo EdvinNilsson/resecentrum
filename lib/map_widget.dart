@@ -120,7 +120,8 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
 
   Future<void> _updateJourneyDetail(
       StreamController streamController, Departure departure, Wrapper<JourneyDetail> journeyDetail) async {
-    var response = await getJourneyDetail(departure.journeyDetailRef, departure.journeyId);
+    var response = await getJourneyDetail(departure.journeyDetailRef, departure.journeyId, departure.journeyNumber,
+        departure.type, departure.stopId, departure.dateTime);
     journeyDetail.element = response?.journeyDetail;
     streamController.add(response);
   }
@@ -247,10 +248,10 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     return bounds;
   }
 
-  void _getJourneyDetailAndAdd(String journeyDetailRef, JourneyPart? journeyPart, bool focus) async {
-    var response = await reseplaneraren.getJourneyDetail(journeyDetailRef);
-    if (response == null) return;
-    _addJourneyDetail(response, journeyPart, focus);
+  void _getJourneyDetailAndAdd(JourneyDetailRef ref, JourneyPart? journeyPart, bool focus) async {
+    var journeyDetail = await getJourneyDetailExtra(ref);
+    if (journeyDetail == null) return;
+    _addJourneyDetail(journeyDetail, journeyPart, focus);
   }
 
   void _addWalk(MapJourney mapJourney) async {
@@ -507,7 +508,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   void _showDepartureSheet(Widget header, int stopId, double lat, double long,
       {DateTime? dateTime, Widget? extraSliver}) {
     final StreamController<DepartureBoardWithTrafficSituations?> streamController = StreamController();
-    _updateDepartureBoard(streamController, stopId, dateTime);
+    _updateDepartureBoard(streamController, stopId, dateTime, lat, long);
 
     var _context = widget._mapJourneys.isEmpty ? Scaffold.of(context).context : context;
 
@@ -532,7 +533,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
                         SliverFillRemaining(
                             child: departureBoardWithTs.connectionState == ConnectionState.waiting
                                 ? loadingPage()
-                                : ErrorPage(() => _updateDepartureBoard(streamController, stopId, dateTime)))
+                                : ErrorPage(() => _updateDepartureBoard(streamController, stopId, dateTime, lat, long)))
                       ].insertIf(extraSliver != null, 1, extraSliver));
                     }
                     var bgLuminance = Theme.of(context).cardColor.computeLuminance();
@@ -541,7 +542,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
                         slivers: [
                           appBar,
                           SliverSafeArea(
-                            sliver: departureBoardList(departureBoardWithTs.data!.departures, bgLuminance, lat, long,
+                            sliver: departureBoardList(departureBoardWithTs.data!.departures, bgLuminance,
                                 onTap: (context, departure) {
                               Navigator.pop(context);
                               _showJourneyDetailSheet(departure);
@@ -562,8 +563,9 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
         });
   }
 
-  Future<void> _updateDepartureBoard(StreamController streamController, int stopId, DateTime? dateTime) async {
-    await getDepartureBoard(streamController, stopId, dateTime, departureBoardOptions, null);
+  Future<void> _updateDepartureBoard(
+      StreamController streamController, int stopId, DateTime? dateTime, double lat, long) async {
+    await getDepartureBoard(streamController, stopId, dateTime, departureBoardOptions, null, lat, long);
   }
 
   void _showJourneyDetailSheet(Departure departure) {
@@ -633,7 +635,8 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     if (journeyDetail != null) {
       _addJourneyDetail(journeyDetail, FromStopIdJourneyPart(departure.stopId), false);
     } else {
-      _getJourneyDetailAndAdd(departure.journeyDetailRef, FromStopIdJourneyPart(departure.stopId), false);
+      _getJourneyDetailAndAdd(
+          JourneyDetailRef.fromDeparture(departure), FromStopIdJourneyPart(departure.stopId), false);
     }
   }
 
@@ -660,7 +663,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
 }
 
 class MapJourney {
-  String? journeyDetailRef;
+  JourneyDetailRef? journeyDetailRef;
   JourneyDetail? journeyDetail;
   JourneyPart? journeyPart;
   String? geometryRef;
@@ -677,6 +680,35 @@ class MapJourney {
       bool? walk,
       this.focus = false}) {
     this.walk = walk ?? false;
+  }
+}
+
+class JourneyDetailRef {
+  late final String ref;
+  late final String journeyId;
+  late final int? journeyNumber;
+  late final String type;
+  late final int evaId;
+  late final DateTime evaDateTime;
+
+  JourneyDetailRef(this.ref, this.journeyId, this.journeyNumber, this.type, this.evaId, this.evaDateTime);
+
+  JourneyDetailRef.fromDeparture(Departure departure) {
+    ref = departure.journeyDetailRef;
+    journeyId = departure.journeyId;
+    journeyNumber = departure.journeyNumber;
+    type = departure.type;
+    evaId = departure.stopId;
+    evaDateTime = departure.dateTime;
+  }
+
+  JourneyDetailRef.fromLeg(Leg leg) {
+    ref = leg.journeyDetailRef!;
+    journeyId = leg.journeyId!;
+    journeyNumber = leg.journeyNumber;
+    type = leg.type;
+    evaId = leg.origin.id!;
+    evaDateTime = leg.origin.dateTime;
   }
 }
 

@@ -521,12 +521,15 @@ class CoordLocation extends Location {
   bool get isValid => name != 'noAddressAvailableWithinTheGivenRadius';
 }
 
+enum DepartureState { normal, departed, atStation, unknownTime, replacementBus, replacementTaxi }
+
 class Departure {
   late Color fgColor;
   late String stop;
   late bool? booking;
   late String journeyDetailRef;
   late String direction;
+  late String? origin;
   late String? track;
   late String? rtTrack;
   late String sname;
@@ -543,6 +546,7 @@ class Departure {
   late bool cancelled;
   late int journeyNumber;
   late bool arrival;
+  DepartureState state = DepartureState.normal;
 
   Departure(dynamic data, {this.arrival = false}) {
     fgColor = fromHex(data['fgColor']);
@@ -550,6 +554,7 @@ class Departure {
     booking = data['booking'] == 'true';
     journeyDetailRef = data['JourneyDetailRef']['ref'];
     direction = arrival ? stop.firstPart() : data['direction'];
+    origin = data['origin'];
     track = data['track'];
     rtTrack = data['rtTrack'];
     sname = data['sname'];
@@ -564,7 +569,7 @@ class Departure {
     journeyId = data['journeyid'];
     accessibility = data['accessibility'];
     cancelled = data['cancelled'] == 'true';
-    journeyNumber = int.parse(data['journeyNumber']);
+    journeyNumber = isTrainType(type) ? int.parse(sname) : int.parse(data['journeyNumber']);
   }
 
   DateTime getDateTime() => rtDateTime ?? dateTime;
@@ -612,6 +617,7 @@ class Stop {
   late double lat;
   bool arrCancelled = false;
   bool depCancelled = false;
+  DepartureState state = DepartureState.normal;
 
   Stop(dynamic s) {
     routeIdx = int.parse(s['routeIdx']);
@@ -749,7 +755,7 @@ class Leg {
     type = data['type'];
     geometryRef = data['GeometryRef'] != null ? data['GeometryRef']['ref'] : null;
     bgColor = tryFromHex(data['bgColor']);
-    notes = data['Notes'] != null ? forceList(data['Notes']['Note']).map((n) => Note(n)) : [];
+    notes = data['Notes'] != null ? forceList(data['Notes']['Note']).map((n) => Note.fromJson(n)) : [];
     journeyId = data['id'];
     stroke = data['stroke'];
     reachable = data['reachable'] == 'true';
@@ -758,7 +764,7 @@ class Leg {
     destination = TripLocation(data['Destination']);
     percentBikeRoad = parseDouble(data['percentBikeRoad']);
     accessibility = data['accessibility'];
-    journeyNumber = parseInt(data['journeyNumber']);
+    journeyNumber = isTrainType(type) ? parseInt(sname) : parseInt(data['journeyNumber']);
   }
 }
 
@@ -782,7 +788,7 @@ class TripLocation {
     rtTrack = data['rtTrack'];
     type = data['type'];
     dateTime = parseDateTime(data['date'], data['time'])!;
-    notes = data['Notes'] != null ? forceList(data['Notes']['Note']).map((n) => Note(n)) : [];
+    notes = data['Notes'] != null ? forceList(data['Notes']['Note']).map((n) => Note.fromJson(n)) : [];
     id = parseInt(data['id']);
     rtDateTime = parseDateTime(data['rtDate'], data['rtTime']);
     name = data['name'];
@@ -792,24 +798,43 @@ class TripLocation {
   DateTime getDateTime() => rtDateTime ?? dateTime;
 }
 
-class Note {
+class Note implements TS {
   late int priority;
   late String severity;
   late String? key;
   late String? text;
 
-  Note(dynamic data) {
+  Note.fromJson(dynamic data) {
     priority = int.parse(data['priority']);
     severity = data['severity'];
     key = data['key'];
     text = data['\$'];
   }
 
+  Note(this.priority, this.severity, this.text);
+
   @override
   bool operator ==(Object other) => (other is Note) && severity == other.severity && text == other.text;
 
   @override
   int get hashCode => severity.hashCode + text.hashCode;
+
+  @override
+  Widget display(BuildContext context, {bool boldTitle = false, bool showAffectedStop = false}) {
+    return Padding(
+      padding: const EdgeInsets.all(5),
+      child: Row(
+        children: [
+          getNoteIcon(severity),
+          const SizedBox(width: 20),
+          Expanded(
+              child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(text ?? '', style: TextStyle(color: Theme.of(context).hintColor)))),
+        ],
+      ),
+    );
+  }
 }
 
 class TimetableInfo {
@@ -824,7 +849,7 @@ class TimetableInfo {
   }
 }
 
-class TrafficSituation {
+class TrafficSituation implements TS {
   late DateTime startTime;
   late Iterable<TSLine> affectedLines;
   late String title;
@@ -847,6 +872,38 @@ class TrafficSituation {
     affectedJourneys = forceList(data['affectedJourneys']).map((j) => TSJourney(j));
     situationNumber = data['situationNumber'];
     affectedStopPoints = forceList(data['affectedStopPoints']).map((s) => TSStop(s));
+  }
+
+  @override
+  Widget display(BuildContext context, {bool boldTitle = false, bool showAffectedStop = false}) {
+    showAffectedStop = showAffectedStop &&
+        affectedStopPoints.map((s) => s.name).toSet().length == 1 &&
+        !title.contains(affectedStopPoints.first.name);
+    return Padding(
+      padding: const EdgeInsets.all(5),
+      child: Row(
+        children: [
+          getNoteIcon(severity),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              children: [
+                Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(showAffectedStop ? '${affectedStopPoints.first.name}: $title' : title,
+                        style: boldTitle ? const TextStyle(fontWeight: FontWeight.bold) : null)),
+                if (!description.isNullOrEmpty) const SizedBox(height: 5),
+                if (!description.isNullOrEmpty)
+                  Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(description!,
+                          style: TextStyle(color: Theme.of(context).hintColor), textAlign: TextAlign.left)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
