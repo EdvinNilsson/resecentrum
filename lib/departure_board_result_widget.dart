@@ -400,7 +400,8 @@ Widget departureBoardList(Iterable<Departure> departures, double bgLuminance,
                     child: Row(children: [
                       Container(
                         child: Text(
-                            departure.dateTime.time() + addLineIfNotEmpty(getDelayString(getDepartureDelay(departure))),
+                            departure.dateTime.time() +
+                                addLineIfNotEmpty(getDelayString(getDepartureDelay(departure), state: departure.state)),
                             style: departure.cancelled
                                 ? departure.state == DepartureState.replacementBus ||
                                         departure.state == DepartureState.replacementTaxi

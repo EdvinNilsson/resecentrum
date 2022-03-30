@@ -79,7 +79,8 @@ class TripResultWidget extends StatelessWidget {
                                   cancelled,
                                   trip.leg
                                           .where((l) => l.cancelled)
-                                          .map((l) => l.name.uncapitalize())
+                                          .map((l) =>
+                                              isTrainType(l.type) ? '${l.name} ${l.sname}' : l.name.uncapitalize())
                                           .joinNaturally()
                                           .capitalize() +
                                       ' är inställd');

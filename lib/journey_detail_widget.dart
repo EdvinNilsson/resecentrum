@@ -106,6 +106,10 @@ bool _isAffectingThisDirection(TrafficSituation ts, Iterable<int> stopIds, Direc
   return ts.affectedStopPoints.any((s) => stopIds.contains(s.gid));
 }
 
+bool _isAffectingThisJourney(TrafficSituation ts, String journeyId) {
+  return ts.affectedJourneys.isEmpty || ts.affectedJourneys.any((j) => j.gid == journeyId);
+}
+
 Future<JourneyDetailWithTrafficSituations?> getJourneyDetail(
     String journeyDetailRef, String journeyId, int? journeyNumber, String type, int evaId, DateTime evaDateTime) async {
   var response = reseplaneraren.getJourneyDetail(journeyDetailRef);
@@ -125,7 +129,8 @@ Future<JourneyDetailWithTrafficSituations?> getJourneyDetail(
       ?.where((ts) =>
           isPresent(ts.startTime, ts.endTime, journeyDetail.stop.first.getDateTime(),
               journeyDetail.stop.last.getDateTime()) &&
-          _isAffectingThisDirection(ts, stopIds, journeyDetail.direction.last))
+          _isAffectingThisDirection(ts, stopIds, journeyDetail.direction.last) &&
+          _isAffectingThisJourney(ts, journeyId))
       .sortTs(journeyDetail.stop.first.getDateTime());
   Iterable<TS> severeTs = [
     (await journeyTs)?.where((ts) => isPresent(
@@ -217,9 +222,7 @@ Future<JourneyDetailWithTrafficSituations?> getJourneyDetail(
           }
         } else if (note.start == 0 && note.end >= stops.length - 2) {
           text = note.text;
-        } else if (note.text.contains('gäller') ||
-            note.text.toLowerCase().contains('ej') ||
-            note.text.contains('kontoladdning')) {
+        } else if (note.text.contains('gäller') || note.text.contains('kontoladdning')) {
           text = note.text;
         } else {
           text = '${shortStationName(stops[note.start].name)}–${shortStationName(stops[note.end].name)}: ${note.text}';

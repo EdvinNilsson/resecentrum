@@ -777,7 +777,10 @@ void setTrainInfo(Iterable<TrainAnnouncement> trainJourney, List<Stop> stops, Li
     var next = trainJourney.tryElementAt(i + 1);
     if (activity.activityType == 'Ankomst') {
       if (!(stops[stop].arrDateTime?.isAtSameMomentAs(activity.advertisedTimeAtLocation) ?? false)) {
-        if (stops[stop].arrDateTime != null) stop++;
+        if (stops[stop].arrDateTime?.isBefore(activity.advertisedTimeAtLocation) ?? false) {
+          stop++;
+          i--;
+        }
         continue;
       }
       stops[stop].rtArrTime = activity.estimatedTimeAtLocation ??
@@ -789,7 +792,10 @@ void setTrainInfo(Iterable<TrainAnnouncement> trainJourney, List<Stop> stops, Li
       stops[stop].arrCancelled |= activity.canceled;
     } else {
       if (!(stops[stop].depDateTime?.isAtSameMomentAs(activity.advertisedTimeAtLocation) ?? false)) {
-        if (stops[stop].depDateTime != null) stop++;
+        if (stops[stop].depDateTime?.isBefore(activity.advertisedTimeAtLocation) ?? false) {
+          stop++;
+          i--;
+        }
         continue;
       }
       stops[stop].rtDepTime = activity.estimatedTimeAtLocation ??

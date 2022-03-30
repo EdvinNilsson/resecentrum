@@ -43,13 +43,13 @@ class Reseplaneraren {
           bool complete = false;
           result.whenComplete(() => complete = true);
           await Future.delayed(retry);
-          return !complete ? _callApi(path, queryParameters, generator, secondTry: true) : null;
+          return !complete ? _callApi(path, queryParameters, generator, secondTry: true, altDio: altDio) : null;
         }()
       ]).catchError((e, stackTrace) async {
         if (e is DioError && !secondTry) {
           if (e.response?.statusCode == 401) {
             _accessToken = await _authorize();
-            return _callApi(path, queryParameters, generator, secondTry: true);
+            return _callApi(path, queryParameters, generator, secondTry: true, altDio: altDio);
           }
         }
         if (kDebugMode) {
@@ -342,7 +342,7 @@ class Reseplaneraren {
   Future<void> setCancelledStops(
       DateTime evaDateTime, int evaStopId, Future<JourneyDetail?> journeyDetailFuture, String journeyId) async {
     try {
-      int extId = evaStopId % 10000000 - evaStopId % 1000;
+      int extId = evaStopId % 1000000000 - evaStopId % 1000;
       String date = DateFormat('yyyyMMdd').format(evaDateTime);
       String time = DateFormat('HHmmss').format(evaDateTime);
 
@@ -968,11 +968,11 @@ class TSDirection {
 }
 
 class TSJourney {
-  late int gid;
+  late String gid;
   late TSLine line;
 
   TSJourney(dynamic data) {
-    gid = int.parse(data['gid']);
+    gid = data['gid'];
     line = data['line'].map((l) => TSLine(l));
   }
 }

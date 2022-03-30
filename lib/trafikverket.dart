@@ -316,7 +316,8 @@ class TrainMessage implements TS {
           Expanded(
             child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text('$header: $externalDescription', style: TextStyle(color: Theme.of(context).hintColor))),
+                child: Text('$header${externalDescription.contains(': ') ? '' : ':'} $externalDescription',
+                    style: TextStyle(color: Theme.of(context).hintColor))),
           ),
         ],
       ),
