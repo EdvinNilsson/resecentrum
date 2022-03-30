@@ -808,7 +808,7 @@ class Note implements TS {
     priority = int.parse(data['priority']);
     severity = data['severity'];
     key = data['key'];
-    text = data['\$'];
+    text = removeToGoMentions(data['\$']);
   }
 
   Note(this.priority, this.severity, this.text);
@@ -864,8 +864,8 @@ class TrafficSituation implements TS {
   TrafficSituation(dynamic data) {
     startTime = DateTime.parse(data['startTime']);
     affectedLines = forceList(data['affectedLines']).map((l) => TSLine(l));
-    title = data['title'];
-    description = data['description'];
+    title = removeToGoMentions(data['title'])!;
+    description = removeToGoMentions(data['description']);
     severity = data['severity'];
     creationTime = DateTime.parse(data['creationTime']);
     endTime = DateTime.parse(data['endTime']);

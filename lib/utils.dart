@@ -224,6 +224,10 @@ String? getHighestPriority(String? a, String? b) {
   return getNotePriority(a) < getNotePriority(b) ? a : b;
 }
 
+var _toGoPattern = RegExp(r'appen (västtrafik|) ?to ?go', multiLine: true, caseSensitive: false);
+
+String? removeToGoMentions(String? text) => text?.replaceAll(_toGoPattern, 'appen');
+
 abstract class TS {
   Widget display(BuildContext context, {bool boldTitle = false, bool showAffectedStop = false});
 }
