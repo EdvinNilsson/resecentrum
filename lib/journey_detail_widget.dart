@@ -121,12 +121,12 @@ Future<JourneyDetailWithTrafficSituations?> getJourneyDetail(
   if (journeyDetail == null) return null;
 
   var stopIds = journeyDetail.stop.map((s) => s.id).toList();
-  var filteredLineTs = (await lineTs)?.where((ts) =>
-      isPresent(
-          ts.startTime, ts.endTime, journeyDetail.stop.first.getDateTime(), journeyDetail.stop.last.getDateTime()) &&
-      _isAffectingThisDirection(ts, stopIds, journeyDetail.direction.last));
-  filteredLineTs = filteredLineTs?.toList()
-    ?..sort((a, b) => getNotePriority(a.severity).compareTo(getNotePriority(b.severity)));
+  var filteredLineTs = (await lineTs)
+      ?.where((ts) =>
+          isPresent(ts.startTime, ts.endTime, journeyDetail.stop.first.getDateTime(),
+              journeyDetail.stop.last.getDateTime()) &&
+          _isAffectingThisDirection(ts, stopIds, journeyDetail.direction.last))
+      .sortTs(journeyDetail.stop.first.getDateTime());
   Iterable<TS> severeTs = [
     (await journeyTs)?.where((ts) => isPresent(
             ts.startTime,

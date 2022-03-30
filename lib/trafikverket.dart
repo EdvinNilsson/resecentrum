@@ -184,7 +184,7 @@ class Trafikverket {
   Future<Iterable<TrainMessage>?> getTrainStationMessage(
       String locationSignature, DateTime start, DateTime end, String? direction) async {
     return await _callApi('''
-<QUERY objecttype="TrainMessage" schemaversion="1.7">
+<QUERY objecttype="TrainMessage" schemaversion="1.7" orderby="LastUpdateDateTime desc">
     <FILTER>
         <AND>
             <EQ name="TrafficImpact.AffectedLocation.LocationSignature" value="$locationSignature" />
@@ -204,7 +204,7 @@ class Trafikverket {
   Future<Iterable<TrainMessage>?> getTrainMessage(
       Iterable<String> locationSignatures, DateTime start, DateTime end) async {
     return await _callApi('''
-<QUERY objecttype="TrainMessage" schemaversion="1.7">
+<QUERY objecttype="TrainMessage" schemaversion="1.7" orderby="LastUpdateDateTime desc">
     <FILTER>
         <AND>
             ${locationSignatures.map((l) => '''<IN name="TrafficImpact.AffectedLocation.LocationSignature" value="$l" />

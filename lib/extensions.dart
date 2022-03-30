@@ -3,6 +3,9 @@ import 'dart:ui';
 import 'package:intl/intl.dart';
 import 'package:maplibre_gl/mapbox_gl.dart';
 
+import 'reseplaneraren.dart';
+import 'utils.dart';
+
 extension IterableExt<T> on Iterable<T> {
   T? tryElementAt(int index) {
     try {
@@ -78,4 +81,16 @@ extension LatLngExt on LatLng {
       latitude <= bounds.northeast.latitude &&
       longitude >= bounds.southwest.longitude &&
       longitude <= bounds.northeast.longitude;
+}
+
+extension TrafficInformationExt on Iterable<TrafficSituation> {
+  Iterable<TrafficSituation> sortTs(DateTime dateTime) {
+    var list = toList(growable: false)
+      ..sort((a, b) {
+        int cmp = getNotePriority(a.severity).compareTo(getNotePriority(b.severity));
+        if (cmp != 0) return cmp;
+        return (dateTime.difference(a.startTime).abs() - dateTime.difference(b.startTime).abs()).inHours;
+      });
+    return list;
+  }
 }

@@ -230,8 +230,7 @@ Future<void> getDepartureBoard(StreamController streamController, int stopId, Da
           .isNotEmpty);
     }
 
-    filteredTs = filteredTs?.toList()
-      ?..sort((a, b) => getNotePriority(a.severity).compareTo(getNotePriority(b.severity)));
+    filteredTs = filteredTs?.sortTs(dateTime ?? DateTime.now());
 
     // If the next 20 departures does not include all departures within the next 15 minutes.
     if (result.isNotEmpty &&
