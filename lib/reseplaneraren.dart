@@ -358,7 +358,7 @@ class Reseplaneraren {
   }
 
   Future<void> setCancelledStops(
-      DateTime evaDateTime, int evaStopId, Future<JourneyDetail?> journeyDetailFuture, String journeyId) async {
+      DateTime evaDateTime, int evaStopId, Future<JourneyDetail?> journeyDetailFuture) async {
     try {
       int extId = evaStopId % 1000000000 - evaStopId % 1000;
       String date = DateFormat('yyyyMMdd').format(evaDateTime);
@@ -395,14 +395,20 @@ class Reseplaneraren {
         ]
       });
 
-      Iterable<int> indices = stationBoard.data['svcResL'].map<int>(
-          (r) => (r['res']['common']['prodL']?.indexWhere((l) => l['prodCtx']['matchId'] == journeyId) ?? -1) as int);
+      var journeyDetail = await journeyDetailFuture;
+      if (journeyDetail == null) return;
+
+      var journeyIds = journeyDetail.journeyId.map((j) => j.id);
+
+      Iterable<int> indices = stationBoard.data['svcResL'].map<int>((r) =>
+          (r['res']['common']['prodL']?.indexWhere((l) => journeyIds.contains(l['prodCtx']['matchId'])) ?? -1) as int);
 
       var journeys = indices
           .mapIndexed((j, i) => i >= 0 ? stationBoard.data['svcResL'][j]['res']['jnyL'][i] : null)
           .where((j) => j != null);
 
-      if (!journeys.any((j) => (j['isCncl'] ?? false) || (j['isPartCncl'] ?? false))) return;
+      if (!journeys.any((j) => (j['isCncl'] ?? false) || (j['isPartCncl'] ?? false)) &&
+          !anyStopWithoutRtInfo(journeyDetail.stop)) return;
 
       var journeyDetails = await _mgateDio.post('/', queryParameters: {
         'rnd': DateTime.now().millisecondsSinceEpoch
@@ -420,10 +426,6 @@ class Reseplaneraren {
       });
 
       Iterable stopL = journeyDetails.data['svcResL'][0]['res']['journey']['stopL'];
-
-      var journeyDetail = await journeyDetailFuture;
-
-      if (journeyDetail == null) return;
 
       var stops = journeyDetail.stop.toList(growable: false);
 
@@ -514,7 +516,7 @@ class StopLocation extends Location {
   }
 
   StopLocation.fromStop(Stop stop) : super.fromStop(stop) {
-    id = stop.id;
+    id = stopAreaFromStopId(stop.id);
     track = stop.rtTrack ?? stop.track;
   }
 
@@ -589,7 +591,13 @@ class CurrentLocation extends Location {
 
 enum DepartureState { normal, departed, atStation, unknownTime, replacementBus, replacementTaxi }
 
-class Departure {
+mixin DepartureStateMixin {
+  DepartureState state = DepartureState.normal;
+}
+
+class StopDepartureState with DepartureStateMixin {}
+
+class Departure with DepartureStateMixin {
   late Color fgColor;
   late String stop;
   late bool? booking;
@@ -612,7 +620,6 @@ class Departure {
   late bool cancelled;
   late int journeyNumber;
   late bool arrival;
-  DepartureState state = DepartureState.normal;
 
   Departure(dynamic data, {this.arrival = false}) {
     fgColor = fromHex(data['fgColor']);
@@ -683,7 +690,8 @@ class Stop {
   late double lat;
   bool arrCancelled = false;
   bool depCancelled = false;
-  DepartureState state = DepartureState.normal;
+  DepartureStateMixin depState = StopDepartureState();
+  DepartureStateMixin arrState = StopDepartureState();
 
   Stop(dynamic s) {
     routeIdx = int.parse(s['routeIdx']);
@@ -699,11 +707,7 @@ class Stop {
     lat = double.parse(s['lat']);
   }
 
-  DateTime? getArrDateTime() => rtArrTime ?? arrDateTime;
-
-  DateTime? getDepDateTime() => rtDepTime ?? depDateTime;
-
-  DateTime getDateTime() => getDepDateTime() ?? getArrDateTime()!;
+  DateTime getDateTime() => rtDepTime ?? rtArrTime ?? depDateTime ?? arrDateTime!;
 }
 
 abstract class RouteIdx {
@@ -717,7 +721,7 @@ abstract class RouteIdx {
 }
 
 T getValueAtRouteIdx<T extends RouteIdx>(Iterable<T> routeIdxs, int routeIdx) {
-  return routeIdxs.firstWhere((r) => routeIdx >= r.routeIdxFrom && routeIdx < r.routeIdxTo);
+  return routeIdxs.lastWhere((r) => routeIdx >= r.routeIdxFrom && routeIdx <= r.routeIdxTo);
 }
 
 class JourneyId extends RouteIdx {
@@ -805,7 +809,7 @@ class Leg {
 
   Future<Iterable<Iterable<Point>>?> geometry() async {
     if (geometryRef == null) return null;
-    cachedGeometry ??= await reseplaneraren.getGeometry(geometryRef!);
+    cachedGeometry ??= await reseplaneraren.getGeometry(geometryRef!).suppress();
     return cachedGeometry;
   }
 
@@ -834,7 +838,7 @@ class Leg {
   }
 }
 
-class TripLocation {
+class TripLocation with DepartureStateMixin {
   late int? routeIdx;
   late bool cancelled;
   late String? track;
@@ -939,6 +943,14 @@ class TrafficSituation implements TS {
     situationNumber = data['situationNumber'];
     affectedStopPoints = forceList(data['affectedStopPoints']).map((s) => TSStop(s));
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TrafficSituation && runtimeType == other.runtimeType && situationNumber == other.situationNumber;
+
+  @override
+  int get hashCode => situationNumber.hashCode;
 
   @override
   Widget display(BuildContext context, {bool boldTitle = false, bool showAffectedStop = false}) {

@@ -4,6 +4,8 @@ import 'dart:math';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 
+import 'departure_board_result_widget.dart';
+import 'departure_board_widget.dart';
 import 'extensions.dart';
 import 'map_widget.dart';
 import 'reseplaneraren.dart';
@@ -49,8 +51,8 @@ class JourneyDetailWidget extends StatelessWidget {
           ),
           actions: [
             IconButton(
-                onPressed: () async {
-                  await Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
+                onPressed: () {
+                  Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
                     return MapWidget([
                       journeyDetail != null
                           ? MapJourney(journeyDetail: journeyDetail)
@@ -116,8 +118,9 @@ bool _isAffectingThisDirection(TrafficSituation ts, Iterable<int> stopIds, Direc
   return ts.affectedStopPoints.any((s) => stopIds.contains(s.gid));
 }
 
-bool _isAffectingThisJourney(TrafficSituation ts, String journeyId) {
-  return ts.affectedJourneys.isEmpty || ts.affectedJourneys.any((j) => j.gid == journeyId);
+bool _isAffectingThisJourney(TrafficSituation ts, Iterable<JourneyId> journeyIds) {
+  var ids = journeyIds.map((j) => j.id);
+  return ts.affectedJourneys.isEmpty || ts.affectedJourneys.any((j) => ids.contains(j.gid));
 }
 
 Future<JourneyDetailWithTrafficSituations?> getJourneyDetail(
@@ -125,14 +128,23 @@ Future<JourneyDetailWithTrafficSituations?> getJourneyDetail(
   var response = reseplaneraren.getJourneyDetail(journeyDetailRef);
 
   Future<void>? cancelledStops;
-  if (!isTrainType(type)) cancelledStops = reseplaneraren.setCancelledStops(evaDateTime, evaId, response, journeyId);
+  if (!isTrainType(type)) cancelledStops = reseplaneraren.setCancelledStops(evaDateTime, evaId, response);
 
   var journeyTs = reseplaneraren.getTrafficSituationsByJourneyId(journeyId).suppress();
   var lineTs = reseplaneraren.getTrafficSituationsByLineId(lineIdFromJourneyId(journeyId)).suppress();
 
   var journeyDetail = await response;
 
-  if (journeyDetail == null) return null;
+  if (journeyDetail.journeyId.length > 1) {
+    for (var journey in journeyDetail.journeyId.where((j) => j.id != journeyId)) {
+      journeyTs = journeyTs.then((ts) async =>
+          ts?.followedBy((await reseplaneraren.getTrafficSituationsByJourneyId(journey.id).suppress()) ?? []));
+      lineTs = lineTs.then((ts) async => ts?.followedBy(
+          (await reseplaneraren.getTrafficSituationsByLineId(lineIdFromJourneyId(journey.id)).suppress()) ?? []));
+    }
+    journeyTs = journeyTs.then((ts) => ts?.toSet());
+    lineTs = lineTs.then((ts) => ts?.toSet());
+  }
 
   var stopIds = journeyDetail.stop.map((s) => s.id).toList();
   var filteredLineTs = (await lineTs)
@@ -140,7 +152,7 @@ Future<JourneyDetailWithTrafficSituations?> getJourneyDetail(
           isPresent(ts.startTime, ts.endTime, journeyDetail.stop.first.getDateTime(),
               journeyDetail.stop.last.getDateTime()) &&
           _isAffectingThisDirection(ts, stopIds, journeyDetail.direction.last) &&
-          _isAffectingThisJourney(ts, journeyId))
+          _isAffectingThisJourney(ts, journeyDetail.journeyId))
       .sortTs(journeyDetail.stop.first.getDateTime());
   Iterable<TS> severeTs = [
     (await journeyTs)?.where((ts) => isPresent(
@@ -214,7 +226,12 @@ Future<JourneyDetailWithTrafficSituations?> getJourneyDetail(
         String text = current.text;
 
         while (current.start == next?.start && current.end == next?.end && current.priority == next?.priority) {
-          text += ', ' + next!.text;
+          var lastChar = text.characters.last;
+          if (lastChar == ',' || lastChar == '.') {
+            text += ' ${next!.text}';
+          } else {
+            text += ', ${next!.text}';
+          }
           next = journeyPartNotes.tryElementAt(++i + 1);
         }
 

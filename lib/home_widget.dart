@@ -56,8 +56,8 @@ class HomeState extends State<Home> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Center(child: Text(_pageTitles[_currentIndex])),
-        automaticallyImplyLeading: false,
+        centerTitle: true,
+        title: Text(_pageTitles[_currentIndex]),
       ),
       body: _tabs[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(

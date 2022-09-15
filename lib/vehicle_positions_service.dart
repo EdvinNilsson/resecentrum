@@ -75,7 +75,7 @@ class VehiclePosition {
     lat = data['lat'];
     long = data['long'];
     speed = data['speed'];
-    updatedAt = DateTime.parse(data['updatedAt']);
+    updatedAt = DateTime.parse(data['updatedAt']).toLocal();
     dataStillRelevant = data['dataStillRelevant'];
   }
 }

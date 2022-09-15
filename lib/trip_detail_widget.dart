@@ -49,8 +49,8 @@ class TripDetailWidget extends StatelessWidget {
         legs.add(Card(
           margin: const EdgeInsets.all(0),
           child: InkWell(
-            onTap: () async {
-              await Navigator.push(context, MaterialPageRoute(builder: (context) {
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) {
                 return MapWidget(_mapJourneys, focusStops: [leg.origin.id!]);
               }));
             },
@@ -78,8 +78,8 @@ class TripDetailWidget extends StatelessWidget {
           title: tripTitle(_trip.leg.first.origin.name, _trip.leg.last.destination.name),
           actions: [
             IconButton(
-                onPressed: () async {
-                  await Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
+                onPressed: () {
+                  Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
                     return MapWidget(_mapJourneys);
                   }));
                 },
@@ -130,9 +130,9 @@ class TripDetailWidget extends StatelessWidget {
     return Card(
         margin: EdgeInsets.zero,
         child: InkWell(
-          onTap: () async {
+          onTap: () {
             if (leg.type == 'WALK') {
-              await Navigator.push(context, MaterialPageRoute(builder: (context) {
+              Navigator.push(context, MaterialPageRoute(builder: (context) {
                 var journeys = _mapJourneys;
                 for (int j = i; j < _trip.leg.length; j++) {
                   if (!journeys[j].walk) break;
@@ -142,7 +142,7 @@ class TripDetailWidget extends StatelessWidget {
               }));
             }
             if (leg.journeyDetailRef == null) return;
-            await Navigator.push(context, MaterialPageRoute(builder: (context) {
+            Navigator.push(context, MaterialPageRoute(builder: (context) {
               return JourneyDetailWidget(
                   leg.journeyDetailRef!,
                   leg.sname ?? leg.name,
@@ -159,8 +159,8 @@ class TripDetailWidget extends StatelessWidget {
           },
           onLongPress: leg.journeyDetailRef == null
               ? null
-              : () async {
-                  await Navigator.push(context, MaterialPageRoute(builder: (context) {
+              : () {
+                  Navigator.push(context, MaterialPageRoute(builder: (context) {
                     var journeys = _mapJourneys;
                     journeys[i].focus = true;
                     return MapWidget(journeys);
@@ -254,7 +254,7 @@ class TripDetailWidget extends StatelessWidget {
                       var walkSpeed = _walkSpeed(distance.data, duration);
                       if (walkSpeed > 6 && !transfer) icon = Icons.directions_run;
                       if (walkSpeed > 15 || walkSpeed < 0) icon = Icons.warning;
-                      return iconAndText(icon, text, gap: 10);
+                      return iconAndText(icon, text, gap: 10, expand: false);
                     })),
             Text(getDurationString(duration), style: TextStyle(color: Theme.of(context).hintColor)),
             FutureBuilder<double?>(
@@ -277,7 +277,7 @@ class TripDetailWidget extends StatelessWidget {
           ),
         if (before != null && after != null && !before.cancelled && !after.cancelled)
           FutureBuilder<Widget?>(
-            future: _walkValidation(walkDistance, duration, transfer),
+            future: _walkValidation(walkDistance, duration),
             builder: (context, result) {
               if (!result.hasData || result.data == null) return Container();
               return Column(
@@ -299,10 +299,10 @@ class TripDetailWidget extends StatelessWidget {
     return 3.6 * (walkDistance ?? 0) / duration.inSeconds; // km/h
   }
 
-  Future<Widget?> _walkValidation(Future<double?> walkDistance, Duration duration, bool transfer) async {
+  Future<Widget?> _walkValidation(Future<double?> walkDistance, Duration duration) async {
     var walkSpeed = _walkSpeed(await walkDistance, duration);
     const String text = 'Risk för att missa anslutningen';
-    if (duration <= const Duration(minutes: 0) || walkSpeed > 10) {
+    if (duration <= Duration.zero || walkSpeed > 10) {
       return iconAndText(Icons.warning, text, gap: 10, iconColor: Colors.red);
     }
     if (walkSpeed > 5 || duration <= Duration(minutes: (_tripOptions.changeMarginMinutes ?? 5) ~/ 2)) {
@@ -312,8 +312,11 @@ class TripDetailWidget extends StatelessWidget {
   }
 
   Widget _stopHeader(TripLocation location) {
-    return stopRow(simpleTimeWidget(location.dateTime, getTripLocationDelay(location), location.cancelled),
-        location.name, location.track, location.rtTrack);
+    return stopRow(
+        simpleTimeWidget(location.dateTime, getTripLocationDelay(location), location.cancelled, location.state),
+        location.name,
+        location.track,
+        location.rtTrack);
   }
 
   Future<double?> _getWalkDistance(Leg? leg) async {
@@ -348,11 +351,13 @@ class TripDetailWidget extends StatelessWidget {
               leg.origin.rtDateTime = origin.rtDepTime ?? origin.rtArrTime;
               leg.origin.rtTrack = origin.rtTrack;
               leg.origin.cancelled = origin.depCancelled;
+              leg.origin.state = origin.depState.state;
 
               Stop? destination = jt.stop.firstWhere((s) => s.routeIdx == leg.destination.routeIdx!);
               leg.destination.rtDateTime = destination.rtArrTime ?? destination.rtDepTime;
               leg.destination.rtTrack = destination.rtTrack;
               leg.destination.cancelled = destination.arrCancelled;
+              leg.destination.state = destination.arrState.state;
             })));
 
     _streamController.add(_trip);

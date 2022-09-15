@@ -33,7 +33,7 @@ class Trafikverket {
 
   Future<Iterable<TrainAnnouncement>?> getTrainJourney(int journeyNumber, DateTime start, DateTime end) async {
     return await _callApi('''
-<QUERY objecttype="TrainAnnouncement" schemaversion="1.6" orderby="AdvertisedTimeAtLocation">
+<QUERY objecttype="TrainAnnouncement" schemaversion="1.6" orderby="AdvertisedTimeAtLocation, ActivityType">
     <FILTER>
         <AND>
             <EQ name="AdvertisedTrainIdent" value="$journeyNumber" />
@@ -188,6 +188,7 @@ class Trafikverket {
     <FILTER>
         <AND>
             <EQ name="TrafficImpact.AffectedLocation.LocationSignature" value="$locationSignature" />
+            <EQ name="TrafficImpact.AffectedLocation.ShouldBeTrafficInformed" value="true" />
             <LTE name="StartDateTime" value="${end.toIso8601String()}" />
             <GTE name="PrognosticatedEndDateTimeTrafficImpact" value="${start.toIso8601String()}" />
             ${direction != null ? '<EQ name="TrafficImpact.AffectedLocation.LocationSignature" value="$direction" />' : ''}
@@ -212,7 +213,6 @@ class Trafikverket {
             <LTE name="StartDateTime" value="${end.toIso8601String()}" />
             <GTE name="PrognosticatedEndDateTimeTrafficImpact" value="${start.toIso8601String()}" />
         </AND>
-        <IN name="TrafficImpact.AffectedLocation.LocationSignature" value="G" />
     </FILTER>
     <INCLUDE>Header</INCLUDE>
     <INCLUDE>ExternalDescription</INCLUDE>
@@ -296,7 +296,7 @@ class TrainAnnouncement {
 }
 
 class TrainMessage implements TS {
-  late String header;
+  late String? header;
   late String externalDescription;
   String severity = 'normal';
 
@@ -316,7 +316,11 @@ class TrainMessage implements TS {
           Expanded(
             child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text('$header${externalDescription.contains(': ') ? '' : ':'} $externalDescription',
+                child: Text(
+                    header == null
+                        ? externalDescription
+                        : '${header!.trim()}${externalDescription.contains(': ') || header!.contains(':') ? '' : ':'} '
+                            '$externalDescription',
                     style: TextStyle(color: Theme.of(context).hintColor))),
           ),
         ],

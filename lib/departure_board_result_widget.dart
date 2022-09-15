@@ -15,12 +15,12 @@ import 'utils.dart';
 import 'vehicle_positions_service.dart';
 
 class DepartureBoardResultWidget extends StatefulWidget {
-  final StopLocation _stopLocation;
+  final Location _location;
   final StopLocation? direction;
   final DateTime? _dateTime;
   final DepartureBoardOptions _departureBoardOptions;
 
-  const DepartureBoardResultWidget(this._stopLocation, this._dateTime, this._departureBoardOptions,
+  const DepartureBoardResultWidget(this._location, this._dateTime, this._departureBoardOptions,
       {this.direction, Key? key})
       : super(key: key);
 
@@ -47,10 +47,9 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_timer == null) return;
-    if (state != AppLifecycleState.resumed && _timer!.isActive) {
+    if (state != AppLifecycleState.resumed && _timer?.isActive == true) {
       _timer?.cancel();
-    } else if (state == AppLifecycleState.resumed && !_timer!.isActive) {
+    } else if (state == AppLifecycleState.resumed && _timer?.isActive == false) {
       _initTimer();
     }
   }
@@ -95,14 +94,17 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
             child: StreamBuilder<DepartureBoardWithTrafficSituations?>(
                 builder: (context, departureBoard) {
                   if (departureBoard.connectionState == ConnectionState.waiting) return loadingPage();
-                  if (!departureBoard.hasData) return ErrorPage(_updateDepartureBoard);
+                  if (!departureBoard.hasData) return ErrorPage(_updateDepartureBoard, error: departureBoard.error);
+                  if (departureBoard.data!.departures.isEmpty) return noDataPage('Inga avgångar hittades');
                   var bgLuminance = Theme.of(context).cardColor.computeLuminance();
                   return CustomScrollView(slivers: [
+                    if (widget._dateTime != null && departureBoard.data!.departures.isNotEmpty)
+                      dateBar(widget._dateTime!),
                     SliverSafeArea(
-                      sliver: departureBoardList(departureBoard.data!.departures, bgLuminance,
-                          onTap: (context, departure) async {
+                      sliver:
+                          departureBoardList(departureBoard.data!.departures, bgLuminance, onTap: (context, departure) {
                         _timer?.cancel();
-                        await Navigator.push(context, MaterialPageRoute(builder: (context) {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) {
                           return JourneyDetailWidget(
                               departure.journeyDetailRef,
                               departure.sname,
@@ -116,8 +118,8 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
                               departure.stopId,
                               departure.dateTime);
                         })).then((_) => _initTimer());
-                      }, onLongPress: (context, departure) async {
-                        await Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
+                      }, onLongPress: (context, departure) {
+                        Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
                           _timer?.cancel();
                           return MapWidget([MapJourney(journeyDetailRef: JourneyDetailRef.fromDeparture(departure))]);
                         })).then((_) => _initTimer());
@@ -160,8 +162,21 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
   }
 
   Future<void> _updateDepartureBoard({bool addOnlyOnce = false, bool ignoreError = false}) async {
-    await getDepartureBoard(_departureStreamController, widget._stopLocation.id, widget._dateTime,
-        widget._departureBoardOptions, widget.direction, widget._stopLocation.lat, widget._stopLocation.lon,
+    int stopId;
+    if (widget._location is CurrentLocation) {
+      try {
+        StopLocation? location =
+            await (widget._location as CurrentLocation).location(onlyStops: true, forceRefresh: true) as StopLocation?;
+        if (location == null) throw NoLocationError();
+        stopId = location.id;
+      } catch (e) {
+        return _departureStreamController.addError(e);
+      }
+    } else {
+      stopId = (widget._location as StopLocation).id;
+    }
+    await getDepartureBoard(_departureStreamController, stopId, widget._dateTime, widget._departureBoardOptions,
+        widget.direction, widget._location.lat, widget._location.lon,
         addOnlyOnce: addOnlyOnce, ignoreError: ignoreError);
   }
 
@@ -238,11 +253,10 @@ Future<void> getDepartureBoard(StreamController streamController, int stopId, Da
           .suppress();
     }
 
-  Future<Iterable<TrafficSituation>?> ts = reseplaneraren.getTrafficSituationsByStopId(stopId);
+    Future<Iterable<TrafficSituation>?> ts = reseplaneraren.getTrafficSituationsByStopId(stopId).suppress();
 
-  var departures = await departuresRequest;
+    var departures = await departuresRequest;
 
-  if (departures != null) {
     var result = departures.toList();
 
     // Workaround for bug in API where some departures after midnight are missing when direction is set.
@@ -284,13 +298,13 @@ Future<void> getDepartureBoard(StreamController streamController, int stopId, Da
       }
     }
 
-    if (departureBoardOptions.includeArrivalOptions.includeArrivals) {
+    if (departureBoardOptions.includeArrivals) {
       var arrivals = await arrivalsRequest;
 
       if (arrivals != null) {
         arrivals = arrivals.where((a) =>
             !result.any((d) => d.journeyId == a.journeyId) &&
-            a.dateTime.isBefore(result.last.dateTime) &&
+            (result.isEmpty || a.dateTime.isBefore(result.last.dateTime)) &&
             !(dateTime == null && a.dateTime.isBefore(DateTime.now())));
         result.insertAll(0, arrivals);
       }
@@ -322,124 +336,7 @@ Future<void> getDepartureBoard(StreamController streamController, int stopId, Da
     var notes = <TS>[];
 
     if (result.any((d) => isTrainType(d.type) && !d.arrival)) {
-      var trainDeparturesRequest = trafikverket.getTrainStationBoard(result);
-      var trainArrivalsRequest = departureBoardOptions.includeArrivalOptions.includeArrivals && direction == null
-          ? trafikverket.getTrainStationBoard(result, arrival: true)
-          : null;
-
-      var trainActivities = (await trainDeparturesRequest)?.followedBy(await trainArrivalsRequest ?? []);
-
-      if (trainActivities == null) {
-        notes.add(Note(0, 'low', 'Kunde inte hämta information från Trafikverket'));
-      } else if (trainActivities.isNotEmpty) {
-        String locationSignature = trainActivities.first.locationSignature;
-
-        var lateTrainsRequest = trafikverket.getLateTrains(locationSignature, dateTime ?? DateTime.now());
-
-        String? directionSignature;
-        if (direction != null) {
-          directionSignature = await trafikverket.getTrainStationFromLocation(direction.lon, direction.lat);
-        }
-
-        var trainStationMessages = trafikverket.getTrainStationMessage(
-            locationSignature, dateTime ?? DateTime.now(), result.last.getDateTime(), directionSignature);
-
-        var lateTrains = await lateTrainsRequest;
-
-        notes.addAll((await trainStationMessages ?? <TrainMessage>[]));
-
-        if (lateTrains != null && lateTrains.isNotEmpty) {
-          var lateDepartures = lateTrains.where((t) => t.activityType == 'Avgang');
-          var lateArrivals = lateTrains.where((t) => t.activityType == 'Ankomst');
-
-          List<TrainAnnouncement> lateTrainActivities = [];
-
-          if (lateDepartures.isNotEmpty) {
-            var lateDepartureBoard = await reseplaneraren.getDepartureBoard(stopId,
-                dateTime: lateDepartures.first.advertisedTimeAtLocation,
-                timeSpan: lateDepartures.last.advertisedTimeAtLocation
-                    .difference(lateDepartures.first.advertisedTimeAtLocation)
-                    .inMinutes,
-                direction: direction?.id,
-                useBus: false,
-                useTram: false,
-                useBoat: false);
-
-            if (lateDepartureBoard != null) {
-              for (TrainAnnouncement lateDeparture in lateDepartures) {
-                var missingDeparture =
-                    lateDepartureBoard.firstWhereOrNull((d) => d.journeyNumber == lateDeparture.advertisedTrainIdent);
-                if (missingDeparture != null &&
-                    !result.any((d) =>
-                        d.journeyNumber == lateDeparture.advertisedTrainIdent &&
-                        d.dateTime.isAtSameMomentAs(lateDeparture.advertisedTimeAtLocation))) {
-                  result.add(missingDeparture);
-                  lateTrainActivities.add(lateDeparture);
-                }
-              }
-            }
-          }
-
-          if (lateArrivals.isNotEmpty &&
-              departureBoardOptions.includeArrivalOptions.includeArrivals &&
-              direction == null) {
-            var lateArrivalBoard = await reseplaneraren.getArrivalBoard(stopId,
-                dateTime: lateArrivals.first.advertisedTimeAtLocation,
-                timeSpan: lateArrivals.last.advertisedTimeAtLocation
-                    .difference(lateArrivals.first.advertisedTimeAtLocation)
-                    .inMinutes,
-                useBus: false,
-                useTram: false,
-                useBoat: false);
-
-            if (lateArrivalBoard != null) {
-              for (TrainAnnouncement lateArrival in lateArrivals) {
-                var missingArrival =
-                    lateArrivalBoard.firstWhereOrNull((d) => d.journeyNumber == lateArrival.advertisedTrainIdent);
-                if (missingArrival != null &&
-                    !result.any((d) =>
-                        d.journeyNumber == lateArrival.advertisedTrainIdent &&
-                        d.dateTime.isAtSameMomentAs(lateArrival.advertisedTimeAtLocation))) {
-                  result.add(missingArrival);
-                  lateTrainActivities.add(lateArrival);
-                }
-              }
-            }
-          }
-
-          trainActivities = trainActivities.followedBy(lateTrainActivities);
-        }
-      }
-
-      for (TrainAnnouncement activity in trainActivities ?? []) {
-        int i = result.indexWhere((d) =>
-            d.journeyNumber == activity.advertisedTrainIdent &&
-            d.dateTime == activity.advertisedTimeAtLocation &&
-            isTrainType(d.type) &&
-            d.arrival == (activity.activityType == 'Ankomst'));
-        if (i == -1) continue;
-        result[i].rtDateTime = activity.timeAtLocation ??
-            activity.estimatedTimeAtLocation ??
-            activity.plannedEstimatedTimeAtLocation ??
-            activity.advertisedTimeAtLocation;
-        result[i].track = activity.trackAtLocation;
-        if (activity.deviation.contains('Spårändrat')) result[i].rtTrack = activity.trackAtLocation;
-        result[i].cancelled |= activity.canceled;
-
-        if (activity.deviation.isNotEmpty) result[i].direction += ', ' + activity.deviation.join(', ');
-
-        if (activity.timeAtLocation == null && (result[i].rtDateTime?.isBefore(DateTime.now()) ?? false)) {
-          result[i].state = DepartureState.atStation;
-        }
-        if (activity.deviation.contains('Invänta tid')) result[i].state = DepartureState.unknownTime;
-        if (activity.deviation.contains('Buss ersätter')) result[i].state = DepartureState.replacementBus;
-        if (activity.deviation.contains('Taxi ersätter')) result[i].state = DepartureState.replacementTaxi;
-        if (activity.timeAtLocation != null &&
-            activity.activityType == 'Avgang' &&
-            (result[i].rtDateTime?.isAfter(DateTime.now().subtract(const Duration(minutes: 15))) ?? false)) {
-          result[i].state = DepartureState.departed;
-        }
-      }
+      await _addTrainInfo(result, departureBoardOptions, direction, notes, long, lat, dateTime, stopId);
     }
 
     result.sort((a, b) {
@@ -452,9 +349,144 @@ Future<void> getDepartureBoard(StreamController streamController, int stopId, Da
     });
 
     streamController.add(DepartureBoardWithTrafficSituations(result, (filteredTs ?? []).cast<TS>().followedBy(notes)));
-  } else {
+  } catch (error) {
     if (ignoreError) return;
-    streamController.add(null);
+    streamController.addError(error);
+  }
+}
+
+Future<void> _addTrainInfo(List<Departure> result, DepartureBoardOptions departureBoardOptions, StopLocation? direction,
+    List<TS> notes, long, double lat, DateTime? dateTime, int stopId) async {
+  var trainDeparturesRequest = trafikverket.getTrainStationBoard(result);
+  var trainArrivalsRequest = departureBoardOptions.includeArrivals && direction == null
+      ? trafikverket.getTrainStationBoard(result, arrival: true)
+      : null;
+
+  var trainActivities = (await trainDeparturesRequest)?.followedBy(await trainArrivalsRequest ?? []);
+
+  if (trainActivities == null) {
+    notes.add(Note(0, 'low', 'Kunde inte hämta information från Trafikverket'));
+    return;
+  }
+
+  String? locationSignature = trainActivities.isNotEmpty
+      ? trainActivities.first.locationSignature
+      : await trafikverket.getTrainStationFromLocation(long, lat);
+  if (locationSignature == null) return;
+
+  var lateTrainsRequest =
+      trainActivities.isNotEmpty ? trafikverket.getLateTrains(locationSignature, dateTime ?? DateTime.now()) : null;
+
+  String? directionSignature;
+  if (direction != null) {
+    directionSignature = await trafikverket.getTrainStationFromLocation(direction.lon, direction.lat);
+  }
+
+  var trainStationMessages = trafikverket.getTrainStationMessage(
+      locationSignature, dateTime ?? DateTime.now(), result.last.getDateTime(), directionSignature);
+
+  var lateTrains = await lateTrainsRequest;
+
+  notes.addAll((await trainStationMessages ?? <TrainMessage>[]));
+
+  if (lateTrains != null && lateTrains.isNotEmpty) {
+    var lateDepartures = lateTrains.where((t) => t.activityType == 'Avgang');
+    var lateArrivals = lateTrains.where((t) => t.activityType == 'Ankomst');
+
+    List<TrainAnnouncement> lateTrainActivities = [];
+
+    if (lateDepartures.isNotEmpty) {
+      var lateDepartureBoard = await reseplaneraren
+          .getDepartureBoard(stopId,
+              dateTime: lateDepartures.first.advertisedTimeAtLocation,
+              timeSpan: lateDepartures.last.advertisedTimeAtLocation
+                  .difference(lateDepartures.first.advertisedTimeAtLocation)
+                  .inMinutes,
+              direction: direction?.id,
+              useBus: false,
+              useTram: false,
+              useBoat: false)
+          .suppress();
+
+      if (lateDepartureBoard != null) {
+        for (TrainAnnouncement lateDeparture in lateDepartures) {
+          var missingDeparture = lateDepartureBoard.firstWhereOrNull((d) =>
+              d.journeyNumber == lateDeparture.advertisedTrainIdent &&
+              d.dateTime.isAtSameMomentAs(lateDeparture.advertisedTimeAtLocation) &&
+              isTrainType(d.type));
+          if (missingDeparture != null &&
+              !result.any((d) =>
+                  d.journeyNumber == lateDeparture.advertisedTrainIdent &&
+                  d.dateTime.isAtSameMomentAs(lateDeparture.advertisedTimeAtLocation) &&
+                  isTrainType(d.type))) {
+            result.add(missingDeparture);
+            lateTrainActivities.add(lateDeparture);
+          }
+        }
+      }
+    }
+
+    if (lateArrivals.isNotEmpty && departureBoardOptions.includeArrivals && direction == null) {
+      var lateArrivalBoard = await reseplaneraren
+          .getArrivalBoard(stopId,
+              dateTime: lateArrivals.first.advertisedTimeAtLocation,
+              timeSpan: lateArrivals.last.advertisedTimeAtLocation
+                  .difference(lateArrivals.first.advertisedTimeAtLocation)
+                  .inMinutes,
+              useBus: false,
+              useTram: false,
+              useBoat: false)
+          .suppress();
+
+      if (lateArrivalBoard != null) {
+        for (TrainAnnouncement lateArrival in lateArrivals) {
+          var missingArrival = lateArrivalBoard.firstWhereOrNull((d) =>
+              d.journeyNumber == lateArrival.advertisedTrainIdent &&
+              d.dateTime.isAtSameMomentAs(lateArrival.advertisedTimeAtLocation) &&
+              isTrainType(d.type));
+          if (missingArrival != null &&
+              !result.any((d) =>
+                  d.journeyNumber == lateArrival.advertisedTrainIdent &&
+                  d.dateTime.isAtSameMomentAs(lateArrival.advertisedTimeAtLocation) &&
+                  isTrainType(d.type))) {
+            result.add(missingArrival);
+            lateTrainActivities.add(lateArrival);
+          }
+        }
+      }
+    }
+
+    trainActivities = trainActivities.followedBy(lateTrainActivities);
+  }
+
+  for (TrainAnnouncement activity in trainActivities) {
+    int i = result.indexWhere((d) =>
+        d.journeyNumber == activity.advertisedTrainIdent &&
+        d.dateTime == activity.advertisedTimeAtLocation &&
+        isTrainType(d.type) &&
+        d.arrival == (activity.activityType == 'Ankomst'));
+    if (i == -1) continue;
+    result[i].rtDateTime = activity.timeAtLocation ??
+        activity.estimatedTimeAtLocation ??
+        activity.plannedEstimatedTimeAtLocation ??
+        activity.advertisedTimeAtLocation;
+    result[i].track = activity.trackAtLocation;
+    if (activity.deviation.contains('Spårändrat')) result[i].rtTrack = activity.trackAtLocation;
+    result[i].cancelled |= activity.canceled;
+
+    if (activity.deviation.isNotEmpty) result[i].direction += ', ${activity.deviation.join(', ')}';
+
+    if (activity.timeAtLocation == null && (result[i].rtDateTime?.isBefore(DateTime.now()) ?? false)) {
+      result[i].state = DepartureState.atStation;
+    }
+
+    setDepartureState(activity, result[i]);
+
+    if (activity.timeAtLocation != null &&
+        activity.activityType == 'Avgang' &&
+        (result[i].rtDateTime?.isAfter(DateTime.now().subtract(const Duration(minutes: 15))) ?? false)) {
+      result[i].state = DepartureState.departed;
+    }
   }
 }
 
@@ -476,18 +508,11 @@ Widget departureBoardList(Iterable<Departure> departures, double bgLuminance,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                     child: Row(children: [
                       Container(
-                        child: Text(
-                            departure.dateTime.time() +
-                                addLineIfNotEmpty(getDelayString(getDepartureDelay(departure), state: departure.state)),
-                            style: departure.cancelled
-                                ? departure.state == DepartureState.replacementBus ||
-                                        departure.state == DepartureState.replacementTaxi
-                                    ? cancelledTextStyle.copyWith(color: orange(context))
-                                    : cancelledTextStyle
-                                : null),
-                        constraints: const BoxConstraints(minWidth: 35 + 8),
-                      ),
-                      Container(child: getCountdown(departure), constraints: const BoxConstraints(minWidth: 28)),
+                          constraints: const BoxConstraints(minWidth: 35 + 8),
+                          child: simpleTimeWidget(
+                              departure.dateTime, getDepartureDelay(departure), departure.cancelled, departure.state,
+                              bold: false, multiline: true)),
+                      Container(constraints: const BoxConstraints(minWidth: 28), child: getCountdown(departure)),
                       const SizedBox(width: 8),
                       lineIconFromDeparture(departure, bgLuminance, context),
                       const SizedBox(width: 10),
@@ -511,7 +536,8 @@ Widget departureBoardList(Iterable<Departure> departures, double bgLuminance,
                       const SizedBox(width: 10),
                       accessibilityIcon(departure.accessibility, departure.rtDateTime,
                           margin: EdgeInsets.fromLTRB(
-                              0, 0, departure.track == null ? 0 : (departure.rtTrack == null ? 5 : 10), 0)),
+                              0, 0, departure.track == null ? 0 : (departure.rtTrack == null ? 5 : 10), 0),
+                          type: departure.type),
                       departure.rtTrack != null ? trackChange(departure.rtTrack!) : Text(departure.track ?? '')
                     ]))));
       },

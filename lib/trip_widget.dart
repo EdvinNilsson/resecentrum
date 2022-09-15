@@ -174,7 +174,7 @@ class TripWidget extends StatelessWidget {
     );
   }
 
-  void _onSearch(BuildContext context) async {
+  void _onSearch(BuildContext context) {
     if (fromFieldController.location == null || toFieldController.location == null) {
       if (fromFieldController.location == null) fromFieldController.setErrorText('Saknar startplats');
       if (toFieldController.location == null) toFieldController.setErrorText('Saknar destination');
@@ -186,7 +186,7 @@ class TripWidget extends StatelessWidget {
           fromFieldController.location!,
           toFieldController.location!,
           getDateTimeFromSelector(_dateTimeSelectorController, _segmentedControlController),
-          _segmentedControlController.value == 2 ? true : null,
+          _segmentedControlController.value == 2,
           _tripOptions);
     }));
     _tripHistoryKey.currentState?._update();
@@ -229,9 +229,8 @@ class _FavoritePlacesListState extends State<FavoritePlacesList> {
             onLongPress: widget.onLongPress != null ? () => widget.onLongPress!(location) : null,
             callOnFavoriteChange: false);
       },
-      separatorBuilder: (context, index) {
-        return const Divider(height: 1);
-      },
+      separatorBuilder: (context, index) => const Divider(height: 1),
+      addEndingSeparator: true,
     );
   }
 }

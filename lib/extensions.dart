@@ -18,12 +18,12 @@ extension IterableExt<T> on Iterable<T> {
 
 extension ListExt<T> on List<T> {
   List<T> addIf(bool predicate, T? value) {
-    if (predicate) add(value!);
+    if (predicate) add(value as T);
     return this;
   }
 
   List<T> insertIf(bool predicate, int index, T? value) {
-    if (predicate) insert(index, value!);
+    if (predicate) insert(index, value as T);
     return this;
   }
 }
@@ -85,6 +85,12 @@ extension LatLngExt on LatLng {
       latitude <= bounds.northeast.latitude &&
       longitude >= bounds.southwest.longitude &&
       longitude <= bounds.northeast.longitude;
+}
+
+extension StringBufferExt on StringBuffer {
+  void writeIf(bool predicate, Object? object) {
+    if (predicate) write(object);
+  }
 }
 
 extension TrafficInformationExt on Iterable<TrafficSituation> {

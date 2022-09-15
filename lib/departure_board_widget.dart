@@ -124,10 +124,10 @@ class DepartureBoardWidget extends StatelessWidget {
                           SliverOverlapInjector(handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context)),
                           FavoritePlacesList(
                               onlyStops: true,
-                              onTap: (location) async {
+                              onTap: (location) {
                                 _stopFieldController.setLocation(location);
                                 _directionFieldController.clearLocation();
-                                await Navigator.push(context, MaterialPageRoute(builder: (context) {
+                                Navigator.push(context, MaterialPageRoute(builder: (context) {
                                   return DepartureBoardResultWidget(
                                       location as StopLocation,
                                       getDateTimeFromSelector(_dateTimeSelectorController, _segmentedControlController),

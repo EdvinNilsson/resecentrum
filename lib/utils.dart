@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:maplibre_gl/mapbox_gl.dart';
+import 'package:webview_flutter/platform_interface.dart';
 
 import 'extensions.dart';
 import 'map_widget.dart';
@@ -19,7 +20,7 @@ String getDelayString(int? delay, {DepartureState? state}) {
   if (state == DepartureState.unknownTime) return '+?';
   if (delay == null) return '';
   String str = delay.abs() < 60 ? delay.toString() : '${delay ~/ 60}h${delay % 60 != 0 ? delay.abs() % 60 : ''}';
-  return delay < 0 ? str : '+' + str;
+  return delay < 0 ? str : '+$str';
 }
 
 bool hasDeparted(VehiclePosition vehicle, double lat, double long) {
@@ -38,18 +39,23 @@ Widget getCountdown(Departure departure) {
       return _countdownText('Buss', style: TextStyle(color: orange(context)));
     }
     if (departure.state == DepartureState.replacementTaxi) {
-      return _countdownText('Taxi', style: TextStyle(color: orange(context)));
+      return _countdownText('Taxi', style: const TextStyle(color: Colors.red));
     }
+    if (departure.cancelled) return _countdownText('Inst.', style: const TextStyle(color: Colors.red));
     if (departure.state == DepartureState.unknownTime) return _countdownText('?');
     if (departure.state == DepartureState.departed) return _countdownText('Avg.', style: const TextStyle());
     if (departure.state == DepartureState.atStation) return _countdownText('nu');
-    if (departure.cancelled) return _countdownText('Inst.', style: const TextStyle(color: Colors.red));
 
     var realtime = departure.rtDateTime != null;
     var timeLeft = departure.getDateTime().difference(DateTime.now());
     var minutesLeft = timeLeft.minutesRounded();
-    if (minutesLeft.abs() > 100) {
-      return _countdownText(minutesLeft.abs() >= 5940 ? '${timeLeft.inDays}d' : '${timeLeft.hoursRounded()}h');
+    if (minutesLeft.abs() >= 100) {
+      if (minutesLeft.abs() >= 5940) {
+        int daysLeft = departure.getDateTime().startOfDay().difference(DateTime.now().startOfDay()).inDays;
+        return _countdownText('${daysLeft}d');
+      } else {
+        return _countdownText('${timeLeft.hoursRounded()}h');
+      }
     }
     if (!realtime && minutesLeft > 0) return _countdownText('ca $minutesLeft');
     if (minutesLeft == 0 || minutesLeft == -1) return _countdownText('nu');
@@ -81,7 +87,7 @@ String getTripCountdown(DateTime? departure) {
   if (departure == null) return '';
   var timeLeft = departure.difference(DateTime.now());
   var minutesLeft = timeLeft.minutesRounded();
-  if (minutesLeft.abs() > 1440) return ', ' + DateFormat.MMMMEEEEd().format(departure);
+  if (minutesLeft.abs() > 1440) return ', ${DateFormat.MMMMEEEEd().format(departure)}';
   if (minutesLeft < -1) return ', avgått';
   if (minutesLeft > 0) return ', om ${getDurationString(timeLeft)}';
   return ', nu';
@@ -97,30 +103,35 @@ Widget stopRowFromStop(Stop stop,
   return Builder(builder: (context) {
     var textSpans = <TextSpan>[];
 
-    void addTimeText(DateTime time, DateTime? rtTime, bool cancelled) {
+    void addTimeText(DateTime time, DateTime? rtTime, bool cancelled, DepartureState state) {
       TextStyle style = TextStyle(color: rtTime == null && useHintColor ? Theme.of(context).hintColor : null);
-      if (cancelled) {
+      if (state == DepartureState.replacementBus) {
+        style = style.copyWith(color: orange(context));
+      } else if (cancelled) {
         style = style.copyWith(color: Colors.red, decoration: TextDecoration.lineThrough);
-        if (stop.state == DepartureState.replacementTaxi || stop.state == DepartureState.replacementBus) {
-          style = style.copyWith(color: orange(context));
-        }
       }
 
       textSpans.add(TextSpan(text: time.time(), style: style.copyWith(fontWeight: FontWeight.bold)));
       if (rtTime != null) {
-        textSpans.add(TextSpan(text: getDelayString(getDelay(time, rtTime), state: stop.state), style: style));
+        textSpans.add(TextSpan(text: getDelayString(getDelay(time, rtTime), state: state), style: style));
       }
     }
 
     if (stop.depDateTime != null &&
         stop.arrDateTime != null &&
-        (stop.depDateTime != stop.arrDateTime || stop.depCancelled != stop.arrCancelled)) {
-      addTimeText(stop.arrDateTime!, stop.rtArrTime, stop.arrCancelled);
+        (stop.depDateTime != stop.arrDateTime ||
+            ((stop.depCancelled != stop.arrCancelled || stop.arrState.state != stop.depState.state) &&
+                !alightingOnly &&
+                !boardingOnly))) {
+      addTimeText(stop.arrDateTime!, stop.rtArrTime, stop.arrCancelled, stop.arrState.state);
       textSpans.add(const TextSpan(text: '\n'));
-      addTimeText(stop.depDateTime!, stop.rtDepTime, stop.depCancelled);
+      addTimeText(stop.depDateTime!, stop.rtDepTime, stop.depCancelled, stop.depState.state);
     } else {
-      addTimeText(stop.depDateTime ?? stop.arrDateTime!, stop.rtDepTime ?? stop.rtArrTime,
-          stop.depDateTime != null ? stop.depCancelled : stop.arrCancelled);
+      addTimeText(
+          stop.depDateTime ?? stop.arrDateTime!,
+          stop.rtDepTime ?? stop.rtArrTime,
+          stop.depDateTime != null ? stop.depCancelled : stop.arrCancelled,
+          stop.depDateTime == null ? stop.arrState.state : stop.depState.state);
     }
 
     var text = Text.rich(TextSpan(text: '', children: textSpans));
@@ -135,16 +146,25 @@ Widget stopRowFromStop(Stop stop,
   });
 }
 
-Widget simpleTimeWidget(DateTime dateTime, int? delay, bool cancelled) {
-  return Row(
-    children: [
-      Text(dateTime.time(),
-          style: cancelled
-              ? cancelledTextStyle.copyWith(fontWeight: FontWeight.bold)
-              : const TextStyle(fontWeight: FontWeight.bold)),
-      Text(getDelayString(delay), style: cancelled ? cancelledTextStyle : null)
-    ],
-  );
+Widget simpleTimeWidget(DateTime dateTime, int? delay, bool cancelled, DepartureState state,
+    {bool bold = true, bool multiline = false}) {
+  return Builder(builder: (context) {
+    TextStyle style = cancelled
+        ? state == DepartureState.replacementBus
+            ? TextStyle(color: orange(context))
+            : cancelledTextStyle
+        : const TextStyle();
+
+    String delayString = getDelayString(delay, state: state);
+    var children = [
+      Text(dateTime.time(), style: bold ? style.copyWith(fontWeight: FontWeight.bold) : style),
+      if (delayString.isNotEmpty) Text(delayString, style: style),
+    ];
+
+    return multiline
+        ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: children)
+        : Row(children: children);
+  });
 }
 
 Widget stopRow(Widget time, String name, String? track, String? rtTrack,
@@ -164,9 +184,9 @@ Widget stopRow(Widget time, String name, String? track, String? rtTrack,
         child: Row(
           children: [
             Container(
-                child: time,
                 constraints: const BoxConstraints(minWidth: 64),
-                margin: const EdgeInsets.fromLTRB(0, 0, 10, 0)),
+                margin: const EdgeInsets.fromLTRB(0, 0, 10, 0),
+                child: time),
             Expanded(
                 child: Text(stopName,
                     overflow: TextOverflow.fade,
@@ -190,11 +210,10 @@ Widget stopRow(Widget time, String name, String? track, String? rtTrack,
   });
 }
 
-Widget accessibilityIcon(String? accessibility, DateTime? rtDateTime, {EdgeInsetsGeometry? margin}) {
-  return accessibility == null && rtDateTime != null
-      ? Container(child: const Icon(Icons.not_accessible), margin: margin)
-      : Container();
-}
+Widget accessibilityIcon(String? accessibility, DateTime? rtDateTime, {EdgeInsetsGeometry? margin, String? type}) =>
+    accessibility == null && rtDateTime != null && (type != null ? !isTrainType(type) : true)
+        ? Container(margin: margin, child: const Icon(Icons.not_accessible))
+        : Container();
 
 Icon getNoteIcon(String severity) {
   switch (severity) {
@@ -327,7 +346,7 @@ Widget trackChange(String rtTrack) {
           child: Container(
             padding: const EdgeInsets.all(5),
             decoration: BoxDecoration(borderRadius: BorderRadius.circular(3), color: Colors.yellow),
-            child: Opacity(child: text, opacity: 0),
+            child: Opacity(opacity: 0, child: text),
           ),
         ),
       ),
@@ -338,6 +357,10 @@ Widget trackChange(String rtTrack) {
 
 bool isTrainType(String type) {
   return type == 'VAS' || type == 'LDT' || type == 'REG';
+}
+
+int colorDiff(Color a, Color b) {
+  return (a.red - b.red).abs() + (a.green - b.green).abs() + (a.blue - a.blue).abs();
 }
 
 Color fromHex(String hexString) {
@@ -471,13 +494,15 @@ class _ErrorPageState extends State<ErrorPage> {
   }
 }
 
-Widget noDataPage(String message) {
+Widget noDataPage(String title, {IconData? icon, String? description}) {
   return SafeArea(
     child: Center(
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      const Icon(Icons.directions_off, size: 32),
+      Icon(icon ?? Icons.directions_off, size: 32),
       const SizedBox(height: 16),
-      Text(message),
+      Text(title),
+      if (description != null) const SizedBox(height: 8),
+      if (description != null) Text(description)
     ])),
   );
 }
@@ -505,11 +530,13 @@ Color orange(BuildContext context) =>
 
 const TextStyle cancelledTextStyle = TextStyle(color: Colors.red, decoration: TextDecoration.lineThrough);
 
-Widget iconAndText(IconData icon, String text, {double gap = 5, Color? iconColor, Color? textColor}) {
+Widget iconAndText(IconData icon, String text,
+    {double gap = 5, Color? iconColor, Color? textColor, bool expand = true}) {
+  var textWidget = Text(text, style: TextStyle(color: textColor));
   return Row(children: [
     Icon(icon, color: iconColor),
     SizedBox(width: gap),
-    Text(text, style: TextStyle(color: textColor)),
+    expand ? Expanded(child: Align(alignment: Alignment.centerLeft, child: textWidget)) : textWidget,
   ]);
 }
 
@@ -557,12 +584,6 @@ class _SegmentedControlState extends State<SegmentedControl> {
         color: Theme.of(context).hintColor,
         constraints: BoxConstraints.expand(
             width: (constraints.maxWidth - widget.options.length - 1) / widget.options.length, height: 48),
-        children: widget.options
-            .asMap()
-            .entries
-            .map((option) => Text(option.value,
-                style: _selections[option.key] ? const TextStyle(fontWeight: FontWeight.bold) : null))
-            .toList(growable: false),
         isSelected: _selections,
         onPressed: (int index) {
           setState(() {
@@ -570,6 +591,12 @@ class _SegmentedControlState extends State<SegmentedControl> {
             widget.controller?.value = index;
           });
         },
+        children: widget.options
+            .asMap()
+            .entries
+            .map((option) => Text(option.value,
+                style: _selections[option.key] ? const TextStyle(fontWeight: FontWeight.bold) : null))
+            .toList(growable: false),
       );
     });
   }
@@ -749,7 +776,7 @@ LatLngBounds? minSize(LatLngBounds? bounds, double minSize) {
       northeast: LatLng(bounds.northeast.latitude + heightBuffer, bounds.northeast.longitude + widthBuffer));
 }
 
-String addLineIfNotEmpty(String text) => text.isEmpty ? text : '\n' + text;
+String addLineIfNotEmpty(String text) => text.isEmpty ? text : '\n$text';
 
 Color darken(Color color, double amount) {
   assert(amount >= 0 && amount <= 1);
@@ -820,12 +847,13 @@ String lineIdFromJourneyId(String journeyId) => '${journeyId.substring(0, 3)}1${
 int stopAreaFromStopId(int stopId) => stopId - stopId % 1000 - 1000000000000;
 
 class SeparatedSliverList extends SliverList {
-  SeparatedSliverList({
-    Key? key,
-    required IndexedWidgetBuilder itemBuilder,
-    required IndexedWidgetBuilder separatorBuilder,
-    required itemCount,
-  }) : super(
+  SeparatedSliverList(
+      {Key? key,
+      required IndexedWidgetBuilder itemBuilder,
+      required IndexedWidgetBuilder separatorBuilder,
+      required itemCount,
+      bool addEndingSeparator = false})
+      : super(
             key: key,
             delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
               final int itemIndex = index ~/ 2;
@@ -835,7 +863,7 @@ class SeparatedSliverList extends SliverList {
               } else {
                 return separatorBuilder(context, itemIndex);
               }
-            }, childCount: itemCount * 2 - 1));
+            }, childCount: itemCount * 2 - (addEndingSeparator ? 0 : 1)));
 }
 
 RenderObjectWidget trafficSituationList(Iterable<TS> ts,
@@ -871,7 +899,7 @@ TextSpan highlightFirstPartSpan(String text, TextStyle? style, BuildContext cont
       children: textParts.length == 1
           ? null
           : [
-              TextSpan(text: ',' + textParts.sublist(1).join(','), style: style.copyWith(color: color?.withAlpha(153)))
+              TextSpan(text: ',${textParts.sublist(1).join(',')}', style: style.copyWith(color: color?.withAlpha(153)))
             ]);
 }
 
@@ -895,6 +923,7 @@ void setTrainInfo(Iterable<TrainAnnouncement> trainJourney, List<Stop> stops, Li
       if (activity.trackAtLocation != null) stops[stop].track = activity.trackAtLocation;
       if (activity.deviation.contains('Spårändrat')) stops[stop].rtTrack = activity.trackAtLocation;
       stops[stop].arrCancelled |= activity.canceled;
+      setDepartureState(activity, stops[stop].arrState);
     } else {
       if (!(stops[stop].depDateTime?.isAtSameMomentAs(activity.advertisedTimeAtLocation) ?? false)) {
         if (stops[stop].depDateTime?.isBefore(activity.advertisedTimeAtLocation) ?? false) {
@@ -910,11 +939,16 @@ void setTrainInfo(Iterable<TrainAnnouncement> trainJourney, List<Stop> stops, Li
       if (activity.trackAtLocation != null) stops[stop].track = activity.trackAtLocation;
       if (activity.deviation.contains('Spårändrat')) stops[stop].rtTrack = activity.trackAtLocation;
       stops[stop].depCancelled |= activity.canceled;
-    }
+      setDepartureState(activity, stops[stop].depState);
 
-    if (activity.deviation.contains('Invänta tid')) stops[stop].state = DepartureState.unknownTime;
-    if (activity.deviation.contains('Taxi ersätter')) stops[stop].state = DepartureState.replacementTaxi;
-    if (activity.deviation.contains('Buss ersätter')) stops[stop].state = DepartureState.replacementBus;
+      if (stops[stop].arrState.state == DepartureState.normal && stops[stop].depState.state != DepartureState.normal) {
+        stops[stop].arrState.state = stops[stop].depState.state;
+      }
+
+      if (stops[stop].depCancelled && !stops[stop].arrCancelled && stops.take(stop).every((s) => s.depCancelled)) {
+        stops[stop].arrCancelled = true;
+      }
+    }
 
     if (stopNotesLowPriority != null && stopNotesNormalPriority != null) {
       if (stopNotesLowPriority[stop] == null) stopNotesLowPriority[stop] = {};
@@ -934,11 +968,10 @@ Future<JourneyDetail?> getJourneyDetailExtra(JourneyDetailRef ref) async {
   var response = reseplaneraren.getJourneyDetail(ref.ref);
 
   if (!isTrainType(ref.type)) {
-    await reseplaneraren.setCancelledStops(ref.evaDateTime, ref.evaId, response, ref.journeyId);
+    await reseplaneraren.setCancelledStops(ref.evaDateTime, ref.evaId, response);
   }
 
   var journeyDetail = await response;
-  if (journeyDetail == null) return null;
 
   if (isTrainType(ref.type)) {
     await trafikverket
@@ -953,6 +986,14 @@ Future<JourneyDetail?> getJourneyDetailExtra(JourneyDetailRef ref) async {
   }
 
   return journeyDetail;
+}
+
+void setDepartureState(TrainAnnouncement activity, DepartureStateMixin departure) {
+  if (activity.deviation.contains('Invänta tid')) departure.state = DepartureState.unknownTime;
+  if (activity.canceled) {
+    if (activity.deviation.any((d) => d.contains('Taxi'))) departure.state = DepartureState.replacementTaxi;
+    if (activity.deviation.any((d) => d.contains('Buss'))) departure.state = DepartureState.replacementBus;
+  }
 }
 
 class SystemGestureArea extends StatelessWidget {
@@ -975,6 +1016,19 @@ class SystemGestureArea extends StatelessWidget {
       ],
     );
   }
+}
+
+bool anyStopWithoutRtInfo(Iterable<Stop> stops) {
+  bool change = false;
+  for (int i = 0; i < stops.length; i++) {
+    var stop = stops.elementAt(i);
+    if ((stop.rtDepTime ?? stop.rtArrTime) != null) {
+      change = true;
+    } else if (change) {
+      return true;
+    }
+  }
+  return false;
 }
 
 const List<int> tramStops = [
@@ -1030,12 +1084,40 @@ Iterable<T> merge<T>(List<T> a, List<T> b, Comparator<T> comparator) {
   }
 
   if (i < a.length) {
-    result.addAll(a.getRange(i, a.length - 1));
+    result.addAll(a.getRange(i, a.length));
   } else {
-    result.addAll(b.getRange(j, b.length - 1));
+    result.addAll(b.getRange(j, b.length));
   }
 
   return result;
+}
+
+class CustomScrollBehavior extends ScrollBehavior {
+  const CustomScrollBehavior(this.androidSdkVersion) : super();
+  final int? androidSdkVersion;
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    switch (getPlatform(context)) {
+      case TargetPlatform.android:
+        return androidSdkVersion != null && androidSdkVersion! >= 31
+            ? StretchingOverscrollIndicator(
+                axisDirection: details.direction,
+                child: child,
+              )
+            : GlowingOverscrollIndicator(
+                axisDirection: details.direction,
+                color: Theme.of(context).colorScheme.secondary,
+                child: child,
+              );
+      default:
+        return child;
+    }
+  }
 }
 
 class Wrapper<T> {
