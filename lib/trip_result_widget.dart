@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:math';
 
 import 'package:collection/collection.dart';
 import 'package:dotted_line/dotted_line.dart';
 import 'package:flutter/material.dart';
 
 import 'extensions.dart';
+import 'main.dart';
 import 'map_widget.dart';
 import 'options_panel.dart';
 import 'reseplaneraren.dart';
@@ -13,11 +13,13 @@ import 'trafikverket.dart';
 import 'trip_detail_widget.dart';
 import 'utils.dart';
 
+const int longWaitingTime = 90;
+
 class TripResultWidget extends StatelessWidget {
   final Location _from;
   final Location _to;
   final DateTime? _dateTime;
-  final bool? _searchForArrival;
+  final bool _searchForArrival;
   final TripOptions _tripOptions;
 
   Iterable<Trip>? _trips;
@@ -29,7 +31,7 @@ class TripResultWidget extends StatelessWidget {
 
   final StreamController<Iterable<Trip>?> _streamController = StreamController.broadcast();
 
-  Future<void> _handleRefresh() async => _updateTrip();
+  Future<void> _handleRefresh() async => _updateTrip(refresh: true);
 
   @override
   Widget build(BuildContext context) {
@@ -64,9 +66,9 @@ class TripResultWidget extends StatelessWidget {
             child: StreamBuilder<Iterable<Trip>?>(
               builder: (context, tripList) {
                 if (tripList.connectionState == ConnectionState.waiting) return loadingPage();
-                if (!tripList.hasData) return ErrorPage(_updateTrip);
+                if (!tripList.hasData) return ErrorPage(_updateTrip, error: tripList.error);
                 if (tripList.data!.isEmpty) return noDataPage('Inga reseförslag hittades');
-                int maxTripTime = _getMaxTripTime(tripList.data!);
+                int maxTripTime = _getTripTimeWindow(tripList.data!);
                 return CustomScrollView(
                   slivers: [
                     SliverSafeArea(
@@ -81,37 +83,63 @@ class TripResultWidget extends StatelessWidget {
                                 builder: (context, snapshot) {
                                   return snapshot.connectionState == ConnectionState.waiting
                                       ? Container(
-                                          child: loadingPage(), constraints: const BoxConstraints(minHeight: 80))
+                                          constraints: const BoxConstraints(minHeight: 80), child: loadingPage())
                                       : Container();
                                 });
                           }
                           var trip = tripList.data!.elementAt(i);
                           var tripTime = getTripTime(trip);
-                          bool cancelled = trip.leg.any((l) => l.cancelled);
+                          var replacementBus = trip.leg.where((l) =>
+                              l.cancelled &&
+                              l.origin.state == DepartureState.replacementBus &&
+                              l.destination.state == DepartureState.replacementBus);
+                          var partlyCancelled = trip.leg.where((l) => l.origin.cancelled != l.destination.cancelled);
+                          var cancelled = trip.leg
+                              .where((l) => l.cancelled && !replacementBus.contains(l) && !partlyCancelled.contains(l));
                           List<String> notes = <String>[]
                               .addIf(!trip.travelWarranty, 'Resegaranti gäller ej för denna resa')
-                              .addIf(trip.alternative, 'Reseförslaget baseras på aktuell trafiksituation');
-                          List<String> warnings = <String>[]
-                              .addIf(!cancelled && !_isValidTrip(trip), 'Risk för att missa anslutning')
+                              .addIf(trip.alternative, 'Reseförslaget baseras på aktuell trafiksituation')
                               .addIf(
-                                  cancelled,
-                                  trip.leg
-                                          .where((l) => l.cancelled)
+                                  _getMaxWaitTime(trip) >= longWaitingTime,
+                                  'Längre uppehåll vid en hållplats '
+                                  '(${getDurationString(Duration(minutes: _getMaxWaitTime(trip)))})');
+                          List<String> warnings = <String>[].addIf(
+                              cancelled.isEmpty &&
+                                  partlyCancelled.isEmpty &&
+                                  replacementBus.isEmpty &&
+                                  !_isValidTrip(trip),
+                              'Risk för att missa anslutning');
+                          List<String> cancellations = <String>[]
+                              .addIf(
+                                  cancelled.isNotEmpty,
+                                  cancelled
                                           .map((l) =>
                                               isTrainType(l.type) ? '${l.name} ${l.sname}' : l.name.uncapitalize())
                                           .joinNaturally()
                                           .capitalize() +
-                                      ' är inställd');
+                                      (cancelled.length > 1 ? ' är inställda' : ' är inställd'))
+                              .addIf(
+                                  partlyCancelled.isNotEmpty,
+                                  partlyCancelled
+                                          .map((l) =>
+                                              isTrainType(l.type) ? '${l.name} ${l.sname}' : l.name.uncapitalize())
+                                          .joinNaturally()
+                                          .capitalize() +
+                                      (cancelled.length > 1 ? ' är delvis inställda' : ' är delvis inställd'))
+                              .addIf(
+                                  replacementBus.isNotEmpty,
+                                  replacementBus.map((l) => '${l.name} ${l.sname}').joinNaturally() +
+                                      (replacementBus.length > 1 ? ' är ersatta med buss' : ' är ersatt med buss'));
                           return Card(
                               margin: const EdgeInsets.all(5),
                               child: InkWell(
-                                onTap: () async {
-                                  await Navigator.push(context, MaterialPageRoute(builder: (context) {
-                                    return TripDetailWidget(trip, _tripOptions.changeMarginOptions);
+                                onTap: () {
+                                  Navigator.push(context, MaterialPageRoute(builder: (context) {
+                                    return TripDetailWidget(trip, _tripOptions);
                                   }));
                                 },
-                                onLongPress: () async {
-                                  await Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
+                                onLongPress: () {
+                                  Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
                                     return MapWidget(trip.leg
                                         .map((l) => l.journeyDetailRef == null
                                             ? MapJourney(
@@ -131,10 +159,12 @@ class TripResultWidget extends StatelessWidget {
                                     Row(children: [
                                       Container(
                                         constraints: const BoxConstraints(minWidth: 56),
-                                        child: Text(
-                                            trip.leg.first.origin.dateTime.time() +
-                                                getDelayString(getTripLocationDelay(trip.leg.first.origin)),
-                                            style: trip.leg.first.origin.cancelled ? cancelledTextStyle : null),
+                                        child: simpleTimeWidget(
+                                            trip.leg.first.origin.dateTime,
+                                            getTripLocationDelay(trip.leg.first.origin),
+                                            trip.leg.first.origin.cancelled,
+                                            trip.leg.first.origin.state,
+                                            bold: false),
                                       ),
                                       const SizedBox(width: 8),
                                       Expanded(
@@ -146,7 +176,7 @@ class TripResultWidget extends StatelessWidget {
                                                   tripTime, trip.leg.firstWhereOrNull((l) => l.type != 'WALK'))
                                             ]
                                                 .insertIf(_anyNote(trip), 0, _getNotesIcon(trip))
-                                                .insertIf(cancelled, 0,
+                                                .insertIf(cancelled.isNotEmpty || partlyCancelled.isNotEmpty, 0,
                                                     const Text('Inställd', style: TextStyle(color: Colors.red)))
                                                 .addIf(
                                                     trip.leg.any((l) =>
@@ -156,19 +186,25 @@ class TripResultWidget extends StatelessWidget {
                                                     const Icon(Icons.not_accessible))),
                                       ),
                                       const SizedBox(width: 8),
-                                      Text(
-                                          trip.leg.last.destination.dateTime.time() +
-                                              getDelayString(getTripLocationDelay(trip.leg.last.destination)),
-                                          style: trip.leg.last.destination.cancelled ? cancelledTextStyle : null)
+                                      simpleTimeWidget(
+                                          trip.leg.last.destination.dateTime,
+                                          getTripLocationDelay(trip.leg.last.destination),
+                                          trip.leg.last.destination.cancelled,
+                                          trip.leg.last.destination.state,
+                                          bold: false)
                                     ]),
                                     if (notes.isNotEmpty || warnings.isNotEmpty) const SizedBox(height: 8),
                                     Wrap(
+                                        runSpacing: 5,
                                         children: [
-                                      warnings.map<Widget>((msg) => iconAndText(Icons.warning, msg,
-                                          iconColor: Colors.red, textColor: Theme.of(context).hintColor)),
-                                      notes.map<Widget>(
-                                          (msg) => Text(msg, style: TextStyle(color: Theme.of(context).hintColor)))
-                                    ].expand((x) => x).toList(growable: false))
+                                          cancellations.map<Widget>((msg) => iconAndText(Icons.cancel, msg,
+                                              iconColor: Colors.red, textColor: Theme.of(context).hintColor)),
+                                          warnings.map<Widget>((msg) => iconAndText(Icons.warning, msg,
+                                              iconColor: Colors.red, textColor: Theme.of(context).hintColor)),
+                                          notes.map<Widget>((msg) => iconAndText(Icons.info_outline, msg,
+                                              iconColor: Theme.of(context).hintColor,
+                                              textColor: Theme.of(context).hintColor))
+                                        ].expand((x) => x).toList(growable: false))
                                   ]),
                                 ),
                               ));
@@ -219,10 +255,10 @@ class TripResultWidget extends StatelessWidget {
       useBoat: !_tripOptions.services[4] ? false : null,
       viaId: _tripOptions.via?.id,
       needGeo: true,
-      searchForArrival: addMore ? null : _searchForArrival,
+      searchForArrival: _searchForArrival && !addMore ? true : null,
     );
 
-    if (trips != null && trips.any((t) => t.leg.any((l) => isTrainType(l.type)))) {
+    if (trips.any((t) => t.leg.any((l) => isTrainType(l.type)))) {
       trips = trips.toList();
       var trainLegs = trips.expand((t) => t.leg).where((l) => isTrainType(l.type));
       var trainActivities = await trafikverket.getTrainTrips(
@@ -240,6 +276,8 @@ class TripResultWidget extends StatelessWidget {
                 activity.advertisedTimeAtLocation;
             leg.destination.track = activity.trackAtLocation;
             leg.destination.cancelled |= activity.canceled;
+            if (activity.timeAtLocation != null) leg.destination.rtDateTime = null;
+            setDepartureState(activity, leg.destination);
           }
         } else {
           var legs = trainLegs.where((l) =>
@@ -252,6 +290,8 @@ class TripResultWidget extends StatelessWidget {
                 activity.advertisedTimeAtLocation;
             leg.origin.track = activity.trackAtLocation;
             leg.origin.cancelled |= activity.canceled;
+            if (activity.timeAtLocation != null) leg.origin.rtDateTime = null;
+            setDepartureState(activity, leg.origin);
             if (activity.deviation.isNotEmpty) leg.direction = '${leg.direction}, ${activity.deviation.join(', ')}';
           }
         }
@@ -261,9 +301,13 @@ class TripResultWidget extends StatelessWidget {
     return trips;
   }
 
-  Future<void> _updateTrip() async {
-    _trips = await _getTrip(_dateTime);
-    _streamController.add(_trips);
+  Future<void> _updateTrip({bool refresh = false}) async {
+    try {
+      _trips = await _getTrip(_dateTime, refresh: refresh);
+      _streamController.add(_trips);
+    } catch (error) {
+      _streamController.addError(error);
+    }
   }
 
   Future<void> _addTrips(DateTime dateTime) async {
@@ -337,10 +381,21 @@ class TripResultWidget extends StatelessWidget {
     return Row(children: children);
   }
 
+  Widget defaultNote(String msg, BuildContext context) => iconAndText(Icons.info_outline, msg,
+      iconColor: Theme.of(context).hintColor, textColor: Theme.of(context).hintColor);
+
+  Widget defaultWarning(String msg, BuildContext context) =>
+      iconAndText(Icons.warning, msg, iconColor: Colors.red, textColor: Theme.of(context).hintColor);
+
   Widget _lineBox(Leg leg, double bgLuminance, BuildContext context) {
     BoxDecoration decoration =
         lineBoxDecoration(leg.bgColor ?? Colors.black, leg.fgColor ?? Colors.white, bgLuminance, context);
-    if (leg.cancelled) decoration = decoration.copyWith(border: Border.all(color: Colors.red, width: 4));
+    bool replacementBus =
+        leg.origin.state == DepartureState.replacementBus && leg.destination.state == DepartureState.replacementBus;
+    if (leg.cancelled) {
+      decoration =
+          decoration.copyWith(border: Border.all(color: replacementBus ? orange(context) : Colors.red, width: 4));
+    }
     return PhysicalModel(
       elevation: 1.5,
       color: leg.bgColor ?? Colors.black,
@@ -351,21 +406,30 @@ class TripResultWidget extends StatelessWidget {
           child: Center(
               child: Text(leg.sname ?? leg.name,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: leg.cancelled ? Colors.red : leg.fgColor,
-                      fontWeight: FontWeight.bold,
-                      overflow: TextOverflow.ellipsis,
-                      decoration: leg.cancelled ? TextDecoration.lineThrough : null)))),
+                  style: TextStyle(color: leg.fgColor, fontWeight: FontWeight.bold, overflow: TextOverflow.ellipsis)))),
     );
   }
 
-  int _getMaxTripTime(Iterable<Trip> trips) {
-    return trips.map((trip) => getTripTime(trip).inMinutes).reduce(max);
+  int _getTripTimeWindow(Iterable<Trip> trips) {
+    int maxTripTime = 0;
+    for (var trip in trips) {
+      int tripTime = getTripTime(trip).inMinutes;
+      if (tripTime > maxTripTime && _getMaxWaitTime(trip) <= longWaitingTime) maxTripTime = tripTime;
+    }
+    return maxTripTime;
   }
 
-  bool _anyNote(Trip trip) {
-    return trip.leg
-        .any((leg) => leg.notes.isNotEmpty || leg.origin.notes.isNotEmpty || leg.destination.notes.isNotEmpty);
+  int _getMaxWaitTime(Trip trip) {
+    Leg prevLeg = trip.leg.first;
+    int maxWaitTime = 0;
+    for (var leg in trip.leg.skip(1)) {
+      if (leg.type == 'WALK') continue;
+
+      int diff = leg.origin.getDateTime().difference(prevLeg.destination.getDateTime()).inMinutes;
+      if (diff > maxWaitTime) maxWaitTime = diff;
+      prevLeg = leg;
+    }
+    return maxWaitTime;
   }
 
   bool _anyNote(Trip trip) => trip.leg.any(_anyNoteLeg);
@@ -414,7 +478,7 @@ class TripResultWidget extends StatelessWidget {
       if (leg.type == 'WALK') continue;
       if (before != null &&
           leg.origin.getDateTime().difference(before.destination.getDateTime()) <=
-              Duration(minutes: (_tripOptions.changeMarginOptions.minutes ?? 5) ~/ 2)) return false;
+              Duration(minutes: (_tripOptions.changeMarginMinutes ?? 5) ~/ 2)) return false;
       before = leg;
     }
 

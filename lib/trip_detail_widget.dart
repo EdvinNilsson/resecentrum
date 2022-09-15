@@ -8,6 +8,7 @@ import 'journey_detail_widget.dart';
 import 'map_widget.dart';
 import 'options_panel.dart';
 import 'reseplaneraren.dart';
+import 'trip_result_widget.dart';
 import 'utils.dart';
 
 class TripDetailWidget extends StatelessWidget {
@@ -264,7 +265,17 @@ class TripDetailWidget extends StatelessWidget {
                 })
           ],
         ),
-        if (before != null && after != null)
+        if (duration.inMinutes >= longWaitingTime)
+          Column(
+            children: [
+              const Divider(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(5, 0, 0, 0),
+                child: iconAndText(Icons.info_outline, 'Längre uppehåll', gap: 10),
+              ),
+            ],
+          ),
+        if (before != null && after != null && !before.cancelled && !after.cancelled)
           FutureBuilder<Widget?>(
             future: _walkValidation(walkDistance, duration, transfer),
             builder: (context, result) {
