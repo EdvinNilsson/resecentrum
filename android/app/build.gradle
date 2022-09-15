@@ -52,6 +52,7 @@ android {
         applicationId "ga.edvin.resecentrum"
         minSdkVersion 21
         targetSdkVersion flutter.targetSdkVersion
+        compileSdkVersion 33
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         resConfigs "sv"
