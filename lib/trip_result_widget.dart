@@ -297,13 +297,37 @@ class TripResultWidget extends StatelessWidget {
       if (flex <= 0) flex = 1;
       minutes += flex;
 
-      children.add(Expanded(
-          flex: flex,
-          child: leg.type != 'WALK'
-              ? _lineBox(leg, bgLuminance, context)
-              : Stack(
-                  alignment: Alignment.bottomCenter,
-                  children: [const Icon(Icons.directions_walk), DottedLine(dashColor: Theme.of(context).hintColor)])));
+      var legWidget = leg.type != 'WALK'
+          ? _lineBox(leg, bgLuminance, context)
+          : Stack(
+              alignment: Alignment.bottomCenter,
+              children: [const Icon(Icons.directions_walk), DottedLine(dashColor: Theme.of(context).hintColor)]);
+
+      if (leg.notes.isNotEmpty || leg.origin.notes.isNotEmpty || leg.destination.notes.isNotEmpty) {
+        var icon = _getNotesIconLeg(leg);
+
+        if (icon.icon == Icons.info_outline) {
+          icon = const Icon(Icons.info, color: Colors.white);
+        }
+
+        bool lowContrast = colorDiff(leg.bgColor!, icon.color ?? Theme.of(context).iconTheme.color!) <= 20;
+
+        Widget iconWidget = lowContrast || (icon.icon == Icons.info && Theme.of(context).brightness == Brightness.light)
+            ? Stack(alignment: Alignment.center, children: [
+                if (lowContrast) Container(decoration: BoxDecoration(color: leg.fgColor), width: 4, height: 8),
+                Icon(icon.icon, color: lowContrast ? leg.fgColor : leg.bgColor, size: 18),
+                Icon(icon.icon, color: icon.color, size: 16),
+              ])
+            : Icon(icon.icon, color: icon.color, size: 16);
+
+        legWidget = Stack(children: [
+          legWidget,
+          Transform.translate(
+              offset: const Offset(5, -5), child: Align(alignment: Alignment.topRight, child: iconWidget))
+        ]);
+      }
+
+      children.add(Expanded(flex: flex, child: legWidget));
 
       before = leg;
     }
@@ -344,16 +368,27 @@ class TripResultWidget extends StatelessWidget {
         .any((leg) => leg.notes.isNotEmpty || leg.origin.notes.isNotEmpty || leg.destination.notes.isNotEmpty);
   }
 
-  bool _noteOfSeverity(Trip trip, String severity) {
-    return trip.leg.any((leg) =>
-        leg.notes.any((n) => n.severity == severity) ||
+  bool _anyNote(Trip trip) => trip.leg.any(_anyNoteLeg);
+
+  bool _anyNoteLeg(Leg leg) => leg.notes.isNotEmpty || leg.origin.notes.isNotEmpty || leg.destination.notes.isNotEmpty;
+
+  bool _noteOfSeverity(Trip trip, String severity) => trip.leg.any((leg) => _noteOfSeverityLeg(leg, severity));
+
+  bool _noteOfSeverityLeg(Leg leg, String severity) {
+    return leg.notes.any((n) => n.severity == severity) ||
         leg.origin.notes.any((n) => n.severity == severity) ||
-        leg.destination.notes.any((n) => n.severity == severity));
+        leg.destination.notes.any((n) => n.severity == severity);
   }
 
-  Widget _getNotesIcon(Trip trip) {
+  Icon _getNotesIcon(Trip trip) {
     if (_noteOfSeverity(trip, 'high')) return getNoteIcon('high');
     if (_noteOfSeverity(trip, 'normal')) return getNoteIcon('normal');
+    return getNoteIcon('low');
+  }
+
+  Icon _getNotesIconLeg(Leg leg) {
+    if (_noteOfSeverityLeg(leg, 'high')) return getNoteIcon('high');
+    if (_noteOfSeverityLeg(leg, 'normal')) return getNoteIcon('normal');
     return getNoteIcon('low');
   }
 
