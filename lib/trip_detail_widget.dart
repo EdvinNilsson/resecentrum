@@ -97,6 +97,9 @@ class TripDetailWidget extends StatelessWidget {
                   var widgets = _legWidgets(context);
                   return CustomScrollView(
                     slivers: [
+                      if (!_trip.leg.first.origin.dateTime.isSameDayAs(DateTime.now()) &&
+                          !_trip.leg.last.destination.dateTime.isSameDayAs(DateTime.now()))
+                        dateBar(_trip.leg.first.origin.dateTime, showTime: false, margin: 24),
                       SliverSafeArea(
                         sliver: SliverPadding(
                           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),

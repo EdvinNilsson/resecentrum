@@ -75,6 +75,10 @@ class JourneyDetailWidget extends StatelessWidget {
                 }
                 return CustomScrollView(
                   slivers: [
+                    if (!journeyDetailWithTs.data!.journeyDetail.stop.first.getDateTime().isSameDayAs(DateTime.now()) &&
+                        !journeyDetailWithTs.data!.journeyDetail.stop.last.getDateTime().isSameDayAs(DateTime.now()))
+                      dateBar(journeyDetailWithTs.data!.journeyDetail.stop.first.getDateTime(),
+                          margin: 15, showTime: false),
                     SliverSafeArea(
                         sliver: trafficSituationList(journeyDetailWithTs.data!.importantTs,
                             boldTitle: true, padding: const EdgeInsets.fromLTRB(10, 10, 10, 0)),

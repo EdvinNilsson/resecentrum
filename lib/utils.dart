@@ -693,6 +693,19 @@ DateTime? getDateTimeFromSelector(
   }
 }
 
+Widget dateBar(DateTime dateTime, {bool showTime = true, double margin = 20}) {
+  return SliverSafeArea(
+    sliver: SliverPadding(
+        sliver: SliverToBoxAdapter(child: Builder(builder: (context) {
+          var format = DateFormat.MMMMEEEEd();
+          if (showTime) format.add_Hm();
+          return Text(format.format(dateTime), style: Theme.of(context).textTheme.caption);
+        })),
+        padding: EdgeInsets.fromLTRB(margin, 10, margin, 0)),
+    bottom: false,
+  );
+}
+
 LatLngBounds? fromPoints(Iterable<LatLng> points) {
   if (points.isNotEmpty) {
     double? minX, maxX, minY, maxY;

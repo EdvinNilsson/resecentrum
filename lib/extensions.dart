@@ -73,6 +73,10 @@ extension TimeExt on DateTime {
   DateTime startONextDay() {
     return DateTime(year, month, day + 1);
   }
+
+  bool isSameDayAs(DateTime other) {
+    return day == other.day && month == other.month && year == other.year;
+  }
 }
 
 extension LatLngExt on LatLng {
