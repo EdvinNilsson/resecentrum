@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:collection/collection.dart';
@@ -28,14 +29,29 @@ class Reseplaneraren {
   final Dio _mgateDio =
       Dio(BaseOptions(baseUrl: 'https://rrp.vasttrafik.se/bin/mgate.exe', connectTimeout: 5000, receiveTimeout: 5000));
 
-  Future<T?> _callApi<T>(String path, Map<String, dynamic>? queryParameters, T Function(Response) generator,
+  Future<T> _callApi<T>(String path, Map<String, dynamic>? queryParameters, T Function(Response) generator,
       {bool secondTry = false, Dio? altDio, Duration retry = const Duration(seconds: 1, milliseconds: 500)}) async {
     _accessToken ??= await _authorize();
-    if (_accessToken == null) return null;
+
+    Future<T> onError(error, stackTrace) async {
+      if (error is DioError && !secondTry) {
+        if (error.response?.statusCode == 401) {
+          _accessToken = await _authorize();
+          return _callApi(path, queryParameters, generator, secondTry: true, altDio: altDio);
+        }
+      }
+      if (error is DioError) return Future.error(NoInternetError(error));
+      if (kDebugMode) {
+        print(error);
+        print(stackTrace);
+      }
+      return Future.error(error);
+    }
+
     var result = (altDio ?? _dio).get(path,
         queryParameters: queryParameters, options: Options(headers: {'Authorization': 'Bearer $_accessToken'}));
     if (secondTry) {
-      return result.then<T?>(generator).catchError((_) => null);
+      return result.then<T>(generator).catchError(onError);
     } else {
       return Future.any([
         result.then(generator),
@@ -43,40 +59,30 @@ class Reseplaneraren {
           bool complete = false;
           result.whenComplete(() => complete = true);
           await Future.delayed(retry);
-          return !complete ? _callApi(path, queryParameters, generator, secondTry: true, altDio: altDio) : null;
+          if (complete) throw Error();
+          return _callApi(path, queryParameters, generator, secondTry: true, altDio: altDio);
         }()
-      ]).catchError((e, stackTrace) async {
-        if (e is DioError && !secondTry) {
-          if (e.response?.statusCode == 401) {
-            _accessToken = await _authorize();
-            return _callApi(path, queryParameters, generator, secondTry: true, altDio: altDio);
-          }
-        }
-        if (kDebugMode) {
-          print(e);
-          print(stackTrace);
-        }
-      });
+      ]).catchError(onError);
     }
   }
 
-  Future<String?> _authorize() async {
+  Future<String> _authorize() async {
+    var dio = Dio(BaseOptions(
+      baseUrl: 'https://api.vasttrafik.se',
+      connectTimeout: 5000,
+      receiveTimeout: 5000,
+    ));
+
+    const base64 = Base64Codec();
+    const utf8 = Utf8Codec();
+
+    const String auth = '${const String.fromEnvironment('AUTH_KEY')}:${const String.fromEnvironment('AUTH_SECRET')}';
+    String authHeader = 'Basic ${base64.encode(utf8.encode(auth))}';
+
+    dio.options.contentType = 'application/x-www-form-urlencoded';
+    dio.options.headers['Authorization'] = authHeader;
+
     try {
-      var dio = Dio(BaseOptions(
-        baseUrl: 'https://api.vasttrafik.se',
-        connectTimeout: 5000,
-        receiveTimeout: 5000,
-      ));
-
-      const base64 = Base64Codec();
-      const utf8 = Utf8Codec();
-
-      const String auth = '${const String.fromEnvironment('AUTH_KEY')}:${const String.fromEnvironment('AUTH_SECRET')}';
-      String authHeader = 'Basic ${base64.encode(utf8.encode(auth))}';
-
-      dio.options.contentType = 'application/x-www-form-urlencoded';
-      dio.options.headers['Authorization'] = authHeader;
-
       var res =
           await dio.post('/token', queryParameters: {'grant_type': 'client_credentials', 'scope': 'device_$_uuid'});
 
@@ -85,14 +91,12 @@ class Reseplaneraren {
       }
       return res.data['access_token'];
     } catch (e) {
-      if (kDebugMode) {
-        print(e);
-      }
-      return null;
+      if (e is DioError && e.type == DioErrorType.response) throw DisplayableError('Autentisering misslyckades');
+      throw NoInternetError(e);
     }
   }
 
-  Future<Iterable<Trip>?> getTrip(
+  Future<Iterable<Trip>> getTrip(
       {int? originId,
       double? originCoordLat,
       double? originCoordLong,
@@ -195,14 +199,17 @@ class Reseplaneraren {
 
     return await _callApi('/trip', param, (result) {
       var data = result.data['TripList'];
+      if (data['error'] == 'H890 hafasError') return [];
+      checkHafasError(data);
       var trips = forceList(data['Trip']);
       return trips.map((trip) => Trip(trip));
     }, retry: const Duration(seconds: 5));
   }
 
-  Future<Iterable<Location>?> getLocationByName(String input, {bool onlyStops = false}) async {
+  Future<Iterable<Location>> getLocationByName(String input, {bool onlyStops = false}) async {
     return await _callApi('/location.name', {'input': input, 'format': 'json'}, (result) {
       var data = result.data['LocationList'];
+      checkHafasError(data);
 
       Iterable<StopLocation> stopLocations = forceList(data['StopLocation'])
           .map((stop) => StopLocation.fromJson(stop))
@@ -221,11 +228,13 @@ class Reseplaneraren {
     return await _callApi('/location.nearbyaddress', {'originCoordLat': lat, 'originCoordLong': long, 'format': 'json'},
         (result) {
       var data = result.data['LocationList'];
+      if (data['CoordLocation']['name'] == 'noAddressAvailableWithinTheGivenRadius') return null;
+      checkHafasError(data);
       return CoordLocation.fromJson(data['CoordLocation']);
     });
   }
 
-  Future<Iterable<StopLocation>?> getLocationNearbyStops(double lat, double long, {int? maxNo, int? maxDist}) async {
+  Future<Iterable<StopLocation>> getLocationNearbyStops(double lat, double long, {int? maxNo, int? maxDist}) async {
     var param = {'originCoordLat': lat, 'originCoordLong': long, 'format': 'json'};
 
     if (maxNo != null) param['maxNo'] = maxNo;
@@ -233,11 +242,12 @@ class Reseplaneraren {
 
     return await _callApi('/location.nearbystops', param, (result) {
       var data = result.data['LocationList'];
+      checkHafasError(data);
       return forceList(data['StopLocation']).map((stop) => StopLocation.fromJson(stop));
     });
   }
 
-  Future<Iterable<Departure>?> getDepartureBoard(int id,
+  Future<Iterable<Departure>> getDepartureBoard(int id,
       {DateTime? dateTime,
       int? direction,
       bool? useVas,
@@ -262,12 +272,14 @@ class Reseplaneraren {
 
     return await _callApi('/departureBoard', param, (result) {
       var data = result.data['DepartureBoard'];
+      if (data['error'] == 'No journeys found') return [];
+      checkHafasError(data);
       var departures = forceList(data['Departure']);
       return departures.map((d) => Departure(d));
     });
   }
 
-  Future<Iterable<Departure>?> getArrivalBoard(int id,
+  Future<Iterable<Departure>> getArrivalBoard(int id,
       {DateTime? dateTime,
       int? direction,
       bool? useVas,
@@ -292,47 +304,53 @@ class Reseplaneraren {
 
     return await _callApi('/arrivalBoard', param, (result) {
       var data = result.data['ArrivalBoard'];
+      if (data['error'] == 'No journeys found') return [];
+      checkHafasError(data);
       var departures = forceList(data['Arrival']);
       return departures.map((d) => Departure(d, arrival: true));
     });
   }
 
-  Future<JourneyDetail?> getJourneyDetail(String ref) async {
+  Future<JourneyDetail> getJourneyDetail(String ref) async {
     return await _callApi('/journeyDetail', Uri.splitQueryString(ref.split('?').last), (result) {
       var data = result.data['JourneyDetail'];
+      checkHafasError(data);
       return JourneyDetail(data);
     });
   }
 
-  Future<Iterable<Iterable<Point>>?> getGeometry(String ref) async {
+  Future<Iterable<Iterable<Point>>> getGeometry(String ref) async {
     return await _callApi('/geometry', Uri.splitQueryString(ref.split('?').last), (result) {
-      var data = forceList(result.data['Geometry']['Points']);
-      return data.map<Iterable<Point>>((points) => points['Point'].map<Point>((point) => Point(point)).toList());
+      var data = result.data['Geometry'];
+      checkHafasError(data);
+      var points = forceList(data['Points']);
+      return points.map<Iterable<Point>>((points) => points['Point'].map<Point>((point) => Point(point)).toList());
     });
   }
 
   Future<TimetableInfo?> getSystemInfo() async {
     return await _callApi('/systeminfo', {'format': 'json'}, (result) {
       var data = result.data['SystemInfo']['TimetableInfo'];
+      checkHafasError(data);
       return TimetableInfo(data);
     });
   }
 
-  Future<Iterable<TrafficSituation>?> getTrafficSituationsByJourneyId(String journeyId) async {
+  Future<Iterable<TrafficSituation>> getTrafficSituationsByJourneyId(String journeyId) async {
     return await _callApi('/traffic-situations/journey/$journeyId', {}, (result) {
       var data = forceList(result.data);
       return data.map((t) => TrafficSituation(t));
     }, altDio: _tsDio);
   }
 
-  Future<Iterable<TrafficSituation>?> getTrafficSituationsByLineId(String lineId) async {
+  Future<Iterable<TrafficSituation>> getTrafficSituationsByLineId(String lineId) async {
     return await _callApi('/traffic-situations/line/$lineId', {}, (result) {
       var data = forceList(result.data);
       return data.map((t) => TrafficSituation(t));
     }, altDio: _tsDio);
   }
 
-  Future<Iterable<TrafficSituation>?> getTrafficSituationsByStopId(int stopId) async {
+  Future<Iterable<TrafficSituation>> getTrafficSituationsByStopId(int stopId) async {
     return await _callApi('/traffic-situations/stoparea/$stopId', {}, (result) {
       var data = forceList(result.data);
       return data.map((t) => TrafficSituation(t));

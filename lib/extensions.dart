@@ -94,3 +94,9 @@ extension TrafficInformationExt on Iterable<TrafficSituation> {
     return list;
   }
 }
+
+extension FutureExt<T> on Future<T> {
+  Future<T?> suppress() {
+    return then((value) => Future<T?>.value(value)).catchError((_) => null);
+  }
+}

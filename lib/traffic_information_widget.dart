@@ -17,7 +17,7 @@ const String baseUrl = 'https://www.vasttrafik.se';
 
 class TrafficInformationState extends State<TrafficInformationWidget> {
   bool _isLoading = true;
-  bool _isError = false;
+  WebResourceError? _error;
 
   WebViewController? _controller;
 
@@ -45,8 +45,8 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
                   document.adoptedStyleSheets = [sheet];
                 ''');
               },
-              onPageFinished: (_) => setState(() => _isLoading = false),
-              onWebResourceError: (_) => setState(() => _isError = true),
+              onPageFinished: (s) => setState(() => _isLoading = false),
+              onWebResourceError: (e) => setState(() => _error = e),
               navigationDelegate: (NavigationRequest request) {
                 if (request.url.startsWith('$baseUrl/trafikinformation') || request.url.startsWith('$baseUrl/ts')) {
                   return NavigationDecision.navigate;
@@ -56,16 +56,16 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
               }),
         ),
         if (_isLoading) loadingPage(),
-        if (_isError)
+        if (_error != null)
           Container(
+              color: Theme.of(context).canvasColor,
               child: ErrorPage(() async {
                 setState(() {
-                  _isError = false;
+                  _error = null;
                   _isLoading = true;
                 });
                 _controller?.reload();
-              }),
-              color: Theme.of(context).canvasColor),
+              }, error: NoInternetError(_error!))),
       ],
     );
   }

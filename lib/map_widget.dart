@@ -120,10 +120,14 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
 
   Future<void> _updateJourneyDetail(
       StreamController streamController, Departure departure, Wrapper<JourneyDetail> journeyDetail) async {
-    var response = await getJourneyDetail(departure.journeyDetailRef, departure.journeyId, departure.journeyNumber,
-        departure.type, departure.stopId, departure.dateTime);
-    journeyDetail.element = response?.journeyDetail;
-    streamController.add(response);
+    try {
+      var response = await getJourneyDetail(departure.journeyDetailRef, departure.journeyId, departure.journeyNumber,
+          departure.type, departure.stopId, departure.dateTime);
+      journeyDetail.element = response?.journeyDetail;
+      streamController.add(response);
+    } catch (error) {
+      streamController.addError(error);
+    }
   }
 
   Future<void> _addImageFromAsset(String name, String assetName, bool sdf) async {
@@ -256,7 +260,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
 
   void _addWalk(MapJourney mapJourney) async {
     Iterable<Iterable<Point>>? geometry =
-        mapJourney.geometry ?? await reseplaneraren.getGeometry(mapJourney.geometryRef!);
+        mapJourney.geometry ?? await reseplaneraren.getGeometry(mapJourney.geometryRef!).suppress();
     if (geometry == null) return;
     for (var polyline in geometry) {
       _mapController.addLine(LineOptions(
@@ -272,7 +276,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   }
 
   void _addPolylines(JourneyDetail journeyDetail, IdxJourneyPart? journeyPart) async {
-    Iterable<Iterable<Point>>? geometry = await reseplaneraren.getGeometry(journeyDetail.geometryRef);
+    Iterable<Iterable<Point>>? geometry = await reseplaneraren.getGeometry(journeyDetail.geometryRef).suppress();
     if (geometry == null) return;
 
     if (journeyPart != null) {

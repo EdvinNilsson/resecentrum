@@ -1,4 +1,5 @@
 import 'package:collection/collection.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' hide binarySearch;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -345,10 +346,93 @@ Color? tryFromHex(String? hexString) {
   return fromHex(hexString);
 }
 
+class DisplayableError {
+  String message;
+  String? description;
+  IconData? icon;
+
+  DisplayableError(this.message, {this.description, this.icon});
+}
+
+class DefaultError extends DisplayableError {
+  DefaultError() : super('Ett oväntat fel inträffade');
+}
+
+class NoInternetError extends DisplayableError {
+  NoInternetError(Object error)
+      : super('Det är inte alltid trafiken rullar på som den ska',
+            description: 'Kunde inte kontakta Västtrafik för tillfället', icon: Icons.cloud_off) {
+    if (error is DioError && error.type == DioErrorType.other ||
+        error is WebResourceError && error.errorType == WebResourceErrorType.hostLookup) {
+      message = 'Ingen internetanslutning';
+      description = null;
+    }
+  }
+}
+
+class NoLocationError extends DisplayableError {
+  NoLocationError([String? description])
+      : super('Okänd nuvarande position', description: description, icon: Icons.location_off);
+}
+
+class HafasError extends DisplayableError {
+  HafasError(String errorCode, errorText) : super(errorText) {
+    switch (errorCode) {
+      case 'R0001':
+      case 'R0002':
+      case 'H9320':
+        message = 'Ogiltig förfrågan';
+        break;
+      case 'H9380':
+        message = 'Startplats, via-hållplats eller destination ligger för nära varandra';
+        break;
+      case 'R0007':
+      case 'S1':
+        message = 'Kommunikationsproblem';
+        break;
+      case 'H9360':
+        message = 'Datum ligger utanför tillåten sökperiod';
+        break;
+      case 'H9300':
+        message = 'Okänd destination';
+        break;
+      case 'H9280':
+        message = 'Okänd via-hållplats';
+        break;
+      case 'H9260':
+        message = 'Okänd startplats';
+        break;
+      case 'H900':
+        message = 'Sökningen kunde inte genomföras p.g.a. tidtabellsbyte';
+        break;
+      case 'H892':
+        message = 'Sökningen är för komplex (var god ange färre via-hållplatser)';
+        break;
+      case 'H891':
+        message = 'Ingen resväg hittades (var god ange en via-hållplats)';
+        break;
+      case 'H895':
+      case 'H9381':
+        message = 'Startplatsen och destinationen ligger för nära varandra';
+        break;
+      case 'H9220':
+        message = 'Kunde inte hitta en hållplats tillräckligt nära den angivna adressen';
+        break;
+    }
+  }
+}
+
+void checkHafasError(dynamic data) {
+  if (data['error'] != null) {
+    throw HafasError(data['error'].split(' ').first, data['errorText']);
+  }
+}
+
 class ErrorPage extends StatefulWidget {
   final AsyncCallback onRefresh;
+  final Object? error;
 
-  const ErrorPage(this.onRefresh, {Key? key}) : super(key: key);
+  const ErrorPage(this.onRefresh, {this.error, Key? key}) : super(key: key);
 
   @override
   State<ErrorPage> createState() => _ErrorPageState();
@@ -359,23 +443,27 @@ class _ErrorPageState extends State<ErrorPage> {
 
   @override
   Widget build(BuildContext context) {
+    DisplayableError dError = widget.error is DisplayableError ? widget.error as DisplayableError : DefaultError();
     return loading
         ? loadingPage()
         : SafeArea(
-            child: Center(
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.error_outline, size: 32),
-              const SizedBox(height: 12),
-              const Text('Det är inte alltid trafiken rullar på som den ska.'),
-              const Text('Kunde inte få kontakt med Västtrafik för tillfället.'),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                  onPressed: () async {
-                    setState(() => loading = true);
-                    widget.onRefresh().whenComplete(() => setState(() => loading = false));
-                  },
-                  child: const Text('Försök igen'))
-            ])),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Center(
+                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(dError.icon ?? Icons.error_outline, size: 32),
+                const SizedBox(height: 12),
+                Text(dError.message + (dError.description == null ? '' : '.'), textAlign: TextAlign.center),
+                if (dError.description != null) Text('${dError.description}.', textAlign: TextAlign.center),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                    onPressed: () async {
+                      setState(() => loading = true);
+                      widget.onRefresh().whenComplete(() => setState(() => loading = false));
+                    },
+                    child: const Text('Försök igen'))
+              ])),
+            ),
           );
   }
 }
@@ -587,7 +675,7 @@ class _DateTimeSelectorState extends State<DateTimeSelector> {
   }
 
   void updateTimeTableInfo() async {
-    _timetableInfo = await reseplaneraren.getSystemInfo();
+    _timetableInfo = await reseplaneraren.getSystemInfo().suppress();
   }
 }
 

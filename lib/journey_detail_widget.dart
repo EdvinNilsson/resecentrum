@@ -70,7 +70,9 @@ class JourneyDetailWidget extends StatelessWidget {
             child: StreamBuilder<JourneyDetailWithTrafficSituations?>(
               builder: (context, journeyDetailWithTs) {
                 if (journeyDetailWithTs.connectionState == ConnectionState.waiting) return loadingPage();
-                if (!journeyDetailWithTs.hasData) return ErrorPage(_updateJourneyDetail);
+                if (!journeyDetailWithTs.hasData) {
+                  return ErrorPage(_updateJourneyDetail, error: journeyDetailWithTs.error);
+                }
                 return CustomScrollView(
                   slivers: [
                     SliverSafeArea(
@@ -95,9 +97,13 @@ class JourneyDetailWidget extends StatelessWidget {
   }
 
   Future<void> _updateJourneyDetail() async {
-    var response = await getJourneyDetail(journeyDetailRef, journeyId, journeyNumber, type, evaId, evaDateTime);
-    journeyDetail = response?.journeyDetail;
-    _streamController.add(response);
+    try {
+      var response = await getJourneyDetail(journeyDetailRef, journeyId, journeyNumber, type, evaId, evaDateTime);
+      journeyDetail = response?.journeyDetail;
+      _streamController.add(response);
+    } catch (error) {
+      _streamController.addError(error);
+    }
   }
 }
 
@@ -117,8 +123,8 @@ Future<JourneyDetailWithTrafficSituations?> getJourneyDetail(
   Future<void>? cancelledStops;
   if (!isTrainType(type)) cancelledStops = reseplaneraren.setCancelledStops(evaDateTime, evaId, response, journeyId);
 
-  var journeyTs = reseplaneraren.getTrafficSituationsByJourneyId(journeyId);
-  var lineTs = reseplaneraren.getTrafficSituationsByLineId(lineIdFromJourneyId(journeyId));
+  var journeyTs = reseplaneraren.getTrafficSituationsByJourneyId(journeyId).suppress();
+  var lineTs = reseplaneraren.getTrafficSituationsByLineId(lineIdFromJourneyId(journeyId)).suppress();
 
   var journeyDetail = await response;
 
