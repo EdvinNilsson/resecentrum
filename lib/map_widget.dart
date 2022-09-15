@@ -621,7 +621,12 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
                           bottom: false),
                       SliverSafeArea(
                           sliver: journeyDetailList(
-                              journeyDetailWithTs.data!.journeyDetail, journeyDetailWithTs.data!.stopNoteIcons),
+                              journeyDetailWithTs.data!.journeyDetail, journeyDetailWithTs.data!.stopNoteIcons,
+                              onTap: (context, stop) {
+                            Navigator.pop(context);
+                            _showDepartureSheet(stopRowFromStop(stop), stop.id, stop.lat, stop.lon,
+                                dateTime: stop.getDateTime());
+                          }),
                           bottom: false),
                       SliverSafeArea(
                         sliver: trafficSituationList(journeyDetailWithTs.data!.normalTs,

@@ -290,7 +290,8 @@ class JourneyPartNote {
   }
 }
 
-RenderObjectWidget journeyDetailList(JourneyDetail journeyDetail, Iterable<Icon?> stopNoteIcons) {
+RenderObjectWidget journeyDetailList(JourneyDetail journeyDetail, Iterable<Icon?> stopNoteIcons,
+    {void Function(BuildContext, Stop)? onTap}) {
   List<int> lineChanges = [];
   bool useHintColor = journeyDetail.stop.any((s) => (s.rtArrTime ?? s.rtDepTime) != null);
 
@@ -309,17 +310,25 @@ RenderObjectWidget journeyDetailList(JourneyDetail journeyDetail, Iterable<Icon?
       separatorBuilder: (context, i) => const Divider(height: 0),
       itemBuilder: (context, i) {
         var stop = journeyDetail.stop.elementAt(i);
-        var row = stopRowFromStop(stop,
-            alightingOnly: stop.rtDepTime == null &&
-                stop.rtArrTime != null &&
-                !journeyDetail.journeyId.map((e) => e.routeIdxTo).contains(stop.routeIdx),
-            boardingOnly: stop.rtDepTime != null &&
-                stop.rtArrTime == null &&
-                !journeyDetail.journeyId.map((e) => e.routeIdxFrom).contains(stop.routeIdx) &&
-                journeyDetail.stop.elementAt(i - 1).rtDepTime != null,
-            noteIcon: stopNoteIcons.elementAt(i),
-            constraints: const BoxConstraints(minHeight: 32),
-            useHintColor: useHintColor);
+        var row = InkWell(
+            onTap: onTap != null
+                ? () => onTap(context, stop)
+                : () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => DepartureBoardResultWidget(
+                            StopLocation.fromStop(stop), stop.getDateTime(), departureBoardOptions))),
+            child: stopRowFromStop(stop,
+                alightingOnly: stop.rtDepTime == null &&
+                    stop.rtArrTime != null &&
+                    !journeyDetail.journeyId.map((e) => e.routeIdxTo).contains(stop.routeIdx),
+                boardingOnly: stop.rtDepTime != null &&
+                    stop.rtArrTime == null &&
+                    !journeyDetail.journeyId.map((e) => e.routeIdxFrom).contains(stop.routeIdx) &&
+                    journeyDetail.stop.elementAt(i - 1).rtDepTime != null,
+                noteIcon: stopNoteIcons.elementAt(i),
+                constraints: const BoxConstraints(minHeight: 32),
+                useHintColor: useHintColor));
         if (lineChanges.isNotEmpty) {
           int j = lineChanges.indexOf(stop.routeIdx);
           if (j >= 0 || i == 0) {
