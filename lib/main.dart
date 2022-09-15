@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -7,11 +10,19 @@ import 'package:intl/intl.dart';
 import 'favorites.dart';
 import 'home_widget.dart';
 import 'reseplaneraren.dart';
+import 'utils.dart';
 
 late Box mainBox;
 late Box departureBoardBox;
 late Box tripBox;
 late Box<Location> favoriteLocationsBox;
+
+bool supportShortcuts = false;
+bool useEdgeToEdge = true;
+
+int? androidSdkVersion;
+
+PageTransitionsTheme? _transitionsTheme;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +35,20 @@ void main() async {
   tripBox = await Hive.openBox('trip');
   departureBoardBox = await Hive.openBox('departureBoard');
   favoriteLocationsBox = await Hive.openBox('favoriteLocations');
+  if (!kIsWeb && Platform.isAndroid) {
+    androidSdkVersion = await androidSdk();
+    if (androidSdkVersion != null) {
+      supportShortcuts = androidSdkVersion! >= 26;
+      useEdgeToEdge = androidSdkVersion! >= 29;
+    }
+  }
+  if (kIsWeb || !Platform.isIOS) {
+    _transitionsTheme = const PageTransitionsTheme(
+      builders: <TargetPlatform, PageTransitionsBuilder>{
+        TargetPlatform.android: ZoomPageTransitionsBuilder(),
+      },
+    );
+  }
   Intl.defaultLocale = 'sv_SE';
   runApp(const MyApp());
 }
@@ -35,13 +60,16 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    if (useEdgeToEdge) SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     return AnnotatedRegion(
-      value: const SystemUiOverlayStyle(
-        systemNavigationBarColor: Colors.transparent,
-      ),
+      value: useEdgeToEdge
+          ? const SystemUiOverlayStyle(systemNavigationBarColor: Colors.transparent)
+          : SystemUiOverlayStyle(
+              systemNavigationBarColor: Theme.of(context).canvasColor,
+              systemNavigationBarIconBrightness: Brightness.dark),
       child: MaterialApp(
         title: 'Resecentrum',
+        scrollBehavior: CustomScrollBehavior(androidSdkVersion),
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
@@ -50,11 +78,12 @@ class MyApp extends StatelessWidget {
         supportedLocales: const [
           Locale('sv'),
         ],
-        theme: ThemeData(primarySwatch: createMaterialColor(primaryColor)),
+        theme: ThemeData(primarySwatch: createMaterialColor(primaryColor), pageTransitionsTheme: _transitionsTheme),
         darkTheme: ThemeData(
           brightness: Brightness.dark,
           primaryColor: primaryColor,
           toggleableActiveColor: primaryColor,
+          pageTransitionsTheme: _transitionsTheme,
           elevatedButtonTheme: ElevatedButtonThemeData(
               style: ButtonStyle(foregroundColor: MaterialStateProperty.all<Color>(Colors.white))),
           appBarTheme: const AppBarTheme(

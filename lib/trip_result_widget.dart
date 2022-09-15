@@ -36,8 +36,26 @@ class TripResultWidget extends StatelessWidget {
     var bgLuminance = Theme.of(context).cardColor.computeLuminance();
     return Scaffold(
         appBar: AppBar(
-          title: tripTitle(_from.name, _to.name, via: _tripOptions.viaFieldController.location?.name),
-        ),
+            title: StreamBuilder(
+                stream: _streamController.stream,
+                builder: (context, snapshot) {
+                  return tripTitle(_from.getName(), _to.getName(), via: _tripOptions.via?.name);
+                }),
+            actions: supportShortcuts
+                ? <Widget>[
+                    PopupMenuButton(
+                        onSelected: (_) => _createShortcut(context),
+                        itemBuilder: (BuildContext context) => [
+                              const PopupMenuItem(
+                                value: 0,
+                                child: ListTile(
+                                    leading: Icon(Icons.add_to_home_screen),
+                                    title: Text('Skapa genväg'),
+                                    visualDensity: VisualDensity.compact),
+                              )
+                            ])
+                  ]
+                : null),
         backgroundColor: cardBackgroundColor(context),
         body: SystemGestureArea(
           MediaQuery.of(context).systemGestureInsets,
@@ -366,6 +384,53 @@ class TripResultWidget extends StatelessWidget {
     }
 
     return true;
+  }
+
+  void _createShortcut(BuildContext context) {
+    Map<String, String> params = {};
+
+    if (_from is CurrentLocation) {
+      params['originCurrentLocation'] = 'true';
+    } else {
+      params['originLat'] = _from.lat.toString();
+      params['originLon'] = _from.lon.toString();
+      params['originName'] = _from.name;
+    }
+
+    if (_to is CurrentLocation) {
+      params['destCurrentLocation'] = 'true';
+    } else {
+      params['destLat'] = _to.lat.toString();
+      params['destLon'] = _to.lon.toString();
+      params['destName'] = _to.name;
+    }
+
+    if (_from is StopLocation) params['originId'] = (_from as StopLocation).id.toString();
+    if (_from is CoordLocation) params['originType'] = (_from as CoordLocation).type;
+    if (_to is StopLocation) params['destId'] = (_to as StopLocation).id.toString();
+    if (_to is CoordLocation) params['destType'] = (_to as CoordLocation).type;
+
+    if (_tripOptions.changeMarginMinutes != null) {
+      params['changeMargin'] = _tripOptions.changeMarginMinutes.toString();
+    }
+
+    if (!_tripOptions.services.every((b) => b)) {
+      params['services'] = _tripOptions.services.map((b) => b ? 1 : 0).join();
+    }
+
+    if (_tripOptions.wheelchair) params['wheelchair'] = 'true';
+
+    if (_tripOptions.via != null) {
+      params['viaId'] = _tripOptions.via!.id.toString();
+      params['viaName'] = _tripOptions.via!.name;
+      params['viaLat'] = _tripOptions.via!.lat.toString();
+      params['viaLon'] = _tripOptions.via!.lon.toString();
+    }
+
+    var uri = Uri(scheme: 'resecentrum', host: 'trip', queryParameters: params);
+    var label = _from is CurrentLocation ? _to.name.firstPart() : '${_from.name.firstPart()}–${_to.name.firstPart()}';
+
+    createShortcut(context, uri.toString(), label, 'trip', _tripOptions.summary);
   }
 }
 

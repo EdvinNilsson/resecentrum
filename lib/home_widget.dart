@@ -5,12 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:uni_links/uni_links.dart';
 
+import 'departure_board_result_widget.dart';
 import 'departure_board_widget.dart';
 import 'extensions.dart';
 import 'main.dart';
 import 'map_widget.dart';
+import 'options_panel.dart';
 import 'reseplaneraren.dart';
 import 'traffic_information_widget.dart';
+import 'trip_result_widget.dart';
 import 'trip_widget.dart';
 import 'utils.dart';
 
@@ -97,12 +100,54 @@ class HomeState extends State<Home> {
       double? lat = parseDouble(splits.tryElementAt(0));
       double? lon = parseDouble(splits.tryElementAt(1));
       if (lat != null && lon != null) {
-        var location = await getLocationFromCoord(lat, lon);
-        if (location == null) {
-          noLocationFound(context);
-          return;
+        try {
+          var location = await getLocationFromCoord(lat, lon, stopMaxDist: 100);
+          setTripLocation(location, isOrigin: false);
+        } on DisplayableError catch (e) {
+          noLocationFound(context, description: e.description ?? e.message);
         }
-        setTripLocation(location, isOrigin: false);
+      }
+    } else if (uri.scheme == 'resecentrum') {
+      if (kDebugMode) print(uri);
+      try {
+        switch (uri.host) {
+          case 'board':
+            Location? stop = parseLocation(uri.queryParameters, null);
+            StopLocation? direction = parseLocation(uri.queryParameters, 'dir') as StopLocation?;
+            DepartureBoardOptions options = ParamDepartureBoardOptions(uri.queryParameters);
+
+            if (stop == null) break;
+
+            var route = MaterialPageRoute(builder: (context) {
+              return DepartureBoardResultWidget(stop, null, options, direction: direction);
+            });
+
+            if (Navigator.canPop(context)) {
+              Navigator.pushReplacement(context, route);
+            } else {
+              Navigator.push(context, route);
+            }
+            break;
+          case 'trip':
+            Location? from = parseLocation(uri.queryParameters, 'origin');
+            Location? to = parseLocation(uri.queryParameters, 'dest');
+            TripOptions options = ParamTripOptions(uri.queryParameters);
+
+            if (from == null || to == null) break;
+
+            var route = MaterialPageRoute(builder: (context) {
+              return TripResultWidget(from, to, null, false, options);
+            });
+
+            if (Navigator.canPop(context)) {
+              Navigator.pushReplacement(context, route);
+            } else {
+              Navigator.push(context, route);
+            }
+            break;
+        }
+      } catch (e) {
+        if (kDebugMode) print(e);
       }
     }
   }

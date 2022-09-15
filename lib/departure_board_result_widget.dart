@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'extensions.dart';
 import 'journey_detail_widget.dart';
+import 'main.dart';
 import 'map_widget.dart';
 import 'options_panel.dart';
 import 'reseplaneraren.dart';
@@ -61,7 +62,8 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
     if (updateIntermittently) _updateDepartureBoard(addOnlyOnce: true, ignoreError: true);
   }
 
-  final StreamController<DepartureBoardWithTrafficSituations?> _departureStreamController = StreamController();
+  final StreamController<DepartureBoardWithTrafficSituations?> _departureStreamController =
+      StreamController.broadcast();
 
   Future<void> _handleRefresh() async => _updateDepartureBoard(addOnlyOnce: true, ignoreError: true);
 
@@ -70,13 +72,21 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
     _updateDepartureBoard();
     return Scaffold(
         appBar: AppBar(
-            title: widget.direction == null
-                ? Text(widget._stopLocation.name.firstPart(), overflow: TextOverflow.fade)
-                : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(widget._stopLocation.name.firstPart(), overflow: TextOverflow.fade),
-                    Text('mot ' + widget.direction!.name.firstPart(),
-                        overflow: TextOverflow.fade, style: const TextStyle(fontSize: 14, color: Colors.white70))
-                  ])),
+            title: StreamBuilder(stream: _departureStreamController.stream, builder: (context, snapshot) => _title()),
+            actions: supportShortcuts
+                ? <Widget>[
+                    PopupMenuButton(
+                        onSelected: (value) => _createShortcut(),
+                        itemBuilder: (BuildContext context) => [
+                              const PopupMenuItem(
+                                  value: 0,
+                                  child: ListTile(
+                                      leading: Icon(Icons.add_to_home_screen),
+                                      title: Text('Skapa genväg'),
+                                      visualDensity: VisualDensity.compact))
+                            ])
+                  ]
+                : null),
         backgroundColor: cardBackgroundColor(context),
         body: SystemGestureArea(
           MediaQuery.of(context).systemGestureInsets,
@@ -125,10 +135,72 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
         ));
   }
 
+  Widget _title() {
+    var text = widget._location is CurrentLocation
+        ? Row(
+            children: [
+              const Icon(Icons.my_location),
+              const SizedBox(width: 12),
+              Expanded(
+                  child: Text(
+                      (widget._location as CurrentLocation).cachedLocation?.name.firstPart() ??
+                          widget._location.getName().split(', ').last.capitalize(),
+                      overflow: TextOverflow.fade)),
+            ],
+          )
+        : Text(widget._location.name.firstPart(), overflow: TextOverflow.fade);
+
+    return widget.direction == null
+        ? text
+        : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            text,
+            Text('mot ${widget.direction!.name.firstPart()}',
+                overflow: TextOverflow.fade, style: const TextStyle(fontSize: 14, color: Colors.white70))
+          ]);
+  }
+
   Future<void> _updateDepartureBoard({bool addOnlyOnce = false, bool ignoreError = false}) async {
     await getDepartureBoard(_departureStreamController, widget._stopLocation.id, widget._dateTime,
         widget._departureBoardOptions, widget.direction, widget._stopLocation.lat, widget._stopLocation.lon,
         addOnlyOnce: addOnlyOnce, ignoreError: ignoreError);
+  }
+
+  void _createShortcut() {
+    Map<String, String> params = {};
+
+    if (widget._location is CurrentLocation) {
+      params['currentLocation'] = 'true';
+    } else if (widget._location is StopLocation) {
+      params['id'] = (widget._location as StopLocation).id.toString();
+      params['name'] = widget._location.name;
+      params['lat'] = widget._location.lat.toString();
+      params['lon'] = widget._location.lon.toString();
+    }
+
+    if (widget.direction != null) {
+      params['dirId'] = widget.direction!.id.toString();
+      params['dirName'] = widget.direction!.name;
+      params['dirLat'] = widget.direction!.lat.toString();
+      params['dirLon'] = widget.direction!.lon.toString();
+    }
+
+    if (widget._departureBoardOptions.includeArrivals) {
+      params['includeArrivals'] = 'true';
+    }
+
+    if (!widget._departureBoardOptions.services.every((b) => b)) {
+      params['services'] = widget._departureBoardOptions.services.map((b) => b ? 1 : 0).join();
+    }
+
+    var uri = Uri(scheme: 'resecentrum', host: 'board', queryParameters: params);
+
+    var icon = widget._location is StopLocation
+        ? getStopIconString((widget._location as StopLocation).id.toString())
+        : 'my_location';
+
+    var summary = widget._departureBoardOptions.summary;
+
+    createShortcut(context, uri.toString(), widget._location.name.firstPart(), icon, summary);
   }
 }
 

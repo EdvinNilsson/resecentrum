@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' hide binarySearch;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:maplibre_gl/mapbox_gl.dart';
@@ -994,6 +997,14 @@ IconData getStopIcon(String stopId) {
   return Icons.directions_bus;
 }
 
+String getStopIconString(String stopId) {
+  int extId = int.parse(stopId.substring(7, 13));
+  if (binarySearch(tramStops, extId) >= 0) return 'tram';
+  if (binarySearch(trainStops, extId) >= 0) return 'train';
+  if (binarySearch(boatStops, extId) >= 0) return 'boat';
+  return 'bus';
+}
+
 Iterable<T> merge<T>(List<T> a, List<T> b, Comparator<T> comparator) {
   List<T> result = [];
 
@@ -1019,4 +1030,83 @@ class Wrapper<T> {
   T? element;
 
   Wrapper(this.element);
+}
+
+const platform = MethodChannel('ga.edvin.resecentrum');
+
+Future<void> createShortcut(BuildContext context, String uri, String label, String icon, String? summary) async {
+  var textController = TextEditingController(text: label);
+  var valid = ValueNotifier<bool>(true);
+  showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Lägg till på hemskärmen'),
+          content: Container(
+            constraints: const BoxConstraints(maxWidth: 360),
+            width: MediaQuery.of(context).size.width,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  onChanged: (value) => valid.value = value.isNotEmpty,
+                  controller: textController,
+                  decoration: const InputDecoration(hintText: 'Ange genvägsnamn'),
+                ),
+                if (summary != null) const SizedBox(height: 10),
+                if (summary != null)
+                  Text(summary,
+                      style: Theme.of(context).textTheme.bodyText2?.copyWith(color: Theme.of(context).hintColor))
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
+              onPressed: () => Navigator.pop(context),
+            ),
+            ValueListenableBuilder<bool>(
+              valueListenable: valid,
+              builder: (BuildContext context, value, Widget? child) => TextButton(
+                onPressed: value
+                    ? () {
+                        platform
+                            .invokeMethod('createShortcut', {'uri': uri, 'label': textController.text, 'icon': icon});
+                        Navigator.pop(context);
+                      }
+                    : null,
+                child: const Text('LÄGG TILL'),
+              ),
+            ),
+          ],
+        );
+      });
+}
+
+Future<int?> androidSdk() => platform.invokeMethod<int>('sdk');
+
+Location? parseLocation(Map<String, String> params, String? prefix) {
+  if (params.containsKey(_addPrefix('id', prefix))) {
+    return StopLocation.fromJson({
+      'id': params[_addPrefix('id', prefix)],
+      'name': params[_addPrefix('name', prefix)],
+      'lat': params[_addPrefix('lat', prefix)],
+      'lon': params[_addPrefix('lon', prefix)]
+    });
+  } else if (params.containsKey(_addPrefix('type', prefix))) {
+    return CoordLocation.fromJson({
+      'type': params[_addPrefix('type', prefix)],
+      'name': params[_addPrefix('name', prefix)],
+      'lat': params[_addPrefix('lat', prefix)],
+      'lon': params[_addPrefix('lon', prefix)]
+    });
+  } else if (params.containsKey(_addPrefix('currentLocation', prefix))) {
+    return CurrentLocation();
+  }
+  return null;
+}
+
+String _addPrefix(String str, String? prefix) {
+  return prefix == null ? str : prefix + str.capitalize();
 }
