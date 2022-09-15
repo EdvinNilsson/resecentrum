@@ -489,6 +489,8 @@ abstract class Location {
     idx = 0;
   }
 
+  String getName() => name;
+
   @override
   bool operator ==(Object other) => (other is Location) && name == other.name;
 
@@ -535,8 +537,54 @@ class CoordLocation extends Location {
   CoordLocation.fromJson(dynamic data) : super.fromJson(data) {
     type = data['type'];
   }
+}
 
-  bool get isValid => name != 'noAddressAvailableWithinTheGivenRadius';
+@HiveType(typeId: 3)
+class CurrentLocation extends Location {
+  Location? _location;
+  DateTime? lastUpdated;
+  bool tried = false;
+  VoidCallback? onNameChange;
+
+  CurrentLocation({String? name}) : super() {
+    this.name = name ?? 'Nuvarande position';
+    lat = 0;
+    lon = 0;
+  }
+
+  @override
+  String getName() {
+    var location = tried ? _location : null;
+    return '${super.name}, ${location?.name.firstPart() ?? (tried && location == null ? 'okänd' : 'söker...')}';
+  }
+
+  Future<Location?> location({bool forceRefresh = false, onlyStops = false}) async {
+    if (!forceRefresh &&
+        _location != null &&
+        tried &&
+        (lastUpdated?.isBefore(DateTime.now().add(const Duration(minutes: 1))) ?? false)) {
+      return _location;
+    }
+
+    try {
+      var pos = await getPosition();
+
+      lat = pos.latitude;
+      lon = pos.longitude;
+      _location = await getLocationFromCoord(lat, lon, stopMaxDist: onlyStops ? 3000 : 100, onlyStops: onlyStops);
+    } catch (e) {
+      _location = null;
+      return Future.error(e);
+    } finally {
+      lastUpdated = DateTime.now();
+      tried = true;
+      onNameChange?.call();
+    }
+
+    return _location;
+  }
+
+  Location? get cachedLocation => _location;
 }
 
 enum DepartureState { normal, departed, atStation, unknownTime, replacementBus, replacementTaxi }

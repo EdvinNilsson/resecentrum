@@ -40,10 +40,24 @@ class TripWidget extends StatelessWidget {
                       focusNode: _fromFocusNode,
                       suffixIcon: IconButton(
                           onPressed: () async {
-                            _fromInput.text = 'Hittar din position...';
-                            Location? location = await getLocation(stopMaxDist: 100);
-                            if (location == null) noLocationFound(context);
-                            fromFieldController.setLocation(location ?? fromFieldController.location);
+                            var currentLocation = CurrentLocation();
+
+                            currentLocation.onNameChange = () {
+                              fromFieldController.update();
+                              toFieldController.update();
+                            };
+
+                            fromFieldController.setLocation(currentLocation);
+
+                            await currentLocation.location(forceRefresh: true).catchError((e) {
+                              if (e is DisplayableError) {
+                                noLocationFound(context, description: e.description ?? e.message);
+                              } else {
+                                noLocationFound(context);
+                              }
+                              return null;
+                            });
+                            _fromInput.text = currentLocation.getName();
                           },
                           icon: const Icon(Icons.my_location))),
                   LocationField(toFieldController, _toInput, 'Till',

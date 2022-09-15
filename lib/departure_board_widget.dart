@@ -38,10 +38,15 @@ class DepartureBoardWidget extends StatelessWidget {
                       onlyStops: true,
                       suffixIcon: IconButton(
                           onPressed: () async {
-                            _stopInput.text = 'Hittar närliggande hållplats...';
-                            Location? location = await getLocation(onlyStops: true);
-                            if (location == null) noLocationFound(context, onlyStops: true);
-                            _stopFieldController.setLocation(location ?? _stopFieldController.location);
+                            var currentLocation = CurrentLocation(name: 'Närmaste hållplats');
+                            currentLocation.onNameChange = () => _stopFieldController.update();
+                            _stopFieldController.setLocation(currentLocation);
+                            try {
+                              await currentLocation.location(onlyStops: true, forceRefresh: true);
+                            } on DisplayableError catch (e) {
+                              noLocationFound(context, onlyStops: true, description: e.description ?? e.message);
+                            }
+                            _stopInput.text = currentLocation.getName();
                           },
                           icon: const Icon(Icons.my_location)))
                 ])),
@@ -80,16 +85,17 @@ class DepartureBoardWidget extends StatelessWidget {
                         title: SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
-                              onPressed: () async {
-                                if (_stopFieldController.location is! StopLocation) {
+                              onPressed: () {
+                                if (!(_stopFieldController.location is StopLocation ||
+                                    _stopFieldController.location is CurrentLocation)) {
                                   _stopFieldController.setErrorText('Hållplats saknas');
                                   return;
                                 }
                                 _stopFieldController.clearError();
 
-                                await Navigator.push(context, MaterialPageRoute(builder: (context) {
+                                Navigator.push(context, MaterialPageRoute(builder: (context) {
                                   return DepartureBoardResultWidget(
-                                      _stopFieldController.location as StopLocation,
+                                      _stopFieldController.location!,
                                       getDateTimeFromSelector(_dateTimeSelectorController, _segmentedControlController),
                                       departureBoardOptions,
                                       direction: _directionFieldController.location as StopLocation?);

@@ -19,6 +19,7 @@ void main() async {
   Hive.registerAdapter(StopLocationAdapter());
   Hive.registerAdapter(CoordLocationAdapter());
   Hive.registerAdapter(TripHistoryAdapter());
+  Hive.registerAdapter(CurrentLocationAdapter());
   mainBox = await Hive.openBox('main');
   tripBox = await Hive.openBox('trip');
   departureBoardBox = await Hive.openBox('departureBoard');

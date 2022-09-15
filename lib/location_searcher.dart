@@ -257,11 +257,16 @@ class LocationField extends StatefulWidget {
 class _LocationFieldState extends State<LocationField> {
   @override
   void initState() {
-    widget._textController.text = widget._controller._location?.name ?? '';
+    widget._textController.text = widget._controller._location?.getName() ?? '';
+    if (widget._controller.location is CurrentLocation) {
+      var currentLocation = widget._controller.location as CurrentLocation;
+      currentLocation.onNameChange = () => widget._controller.update();
+      currentLocation.location(onlyStops: widget.onlyStops);
+    }
     widget._controller.addListener(() {
       if (!mounted) return;
       setState(() {
-        widget._textController.text = widget._controller._location?.name ?? '';
+        widget._textController.text = widget._controller._location?.getName() ?? '';
       });
     });
     super.initState();

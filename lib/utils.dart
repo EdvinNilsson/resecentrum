@@ -745,57 +745,59 @@ Color darken(Color color, double amount) {
   return hslDark.toColor();
 }
 
-Future<Location?> getLocation({bool onlyStops = false, int? stopMaxDist}) async {
+Future<Position> getPosition() async {
   bool serviceEnabled;
   LocationPermission permission;
 
   serviceEnabled = await Geolocator.isLocationServiceEnabled();
-  if (!serviceEnabled) return null;
+  if (!serviceEnabled) return Future.error(NoLocationError('Platstjänst är avaktiverat'));
 
   permission = await Geolocator.checkPermission();
   if (permission == LocationPermission.denied) {
     permission = await Geolocator.requestPermission();
-    if (permission == LocationPermission.denied) {
-      return null;
-    }
   }
 
-  if (permission == LocationPermission.deniedForever) return null;
+  if (permission == LocationPermission.deniedForever || permission == LocationPermission.denied) {
+    return Future.error(NoLocationError('Saknar behörighet för platstjänst'));
+  }
 
-  Position pos;
   try {
-    pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+    return await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
   } catch (e) {
-    return null;
+    return Future.error(NoLocationError());
   }
-
-  return getLocationFromCoord(pos.latitude, pos.longitude, onlyStops: onlyStops, stopMaxDist: stopMaxDist);
 }
 
-Future<Location?> getLocationFromCoord(double latitude, double longitude,
+Future<Location> getLocationFromCoord(double latitude, double longitude,
     {bool onlyStops = false, int? stopMaxDist}) async {
   var stopReq = reseplaneraren.getLocationNearbyStops(latitude, longitude, maxDist: stopMaxDist);
 
   Future<CoordLocation?>? addressReq;
   if (!onlyStops) addressReq = reseplaneraren.getLocationNearbyAddress(latitude, longitude);
-  var stop = (await stopReq)?.firstWhereOrNull((stop) => stop.isStopArea);
+  var stop = (await stopReq).firstWhereOrNull((stop) => stop.isStopArea);
   // If no stop area was found, convert a stop point into a stop area.
   if (stop == null) {
-    stop = (await stopReq)?.firstWhereOrNull((stop) => stop.id >= 9022000000000000);
+    stop = (await stopReq).firstWhereOrNull((stop) => stop.id >= 9022000000000000);
     stop?.id = stopAreaFromStopId(stop.id);
     stop?.track = null;
   }
   if (stop != null) return stop;
   if (!onlyStops) {
     var address = await addressReq;
-    if (address?.isValid ?? false) return address;
+    if (address != null) return address;
   }
-  return null;
+  throw NoLocationError('Ingen ${onlyStops ? 'hållplats' : 'adress eller hållplats'} hittades inom sökradien');
 }
 
-void noLocationFound(BuildContext context, {bool onlyStops = false}) {
-  ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Kunde inte hitta en närliggande ${!onlyStops ? 'adress eller ' : ''}hållplats')));
+void noLocationFound(BuildContext context, {bool onlyStops = false, String? description, bool plural = false}) {
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text((StringBuffer('Kunde inte hitta ')
+            ..writeIf(!plural, 'en ')
+            ..write('närliggande ')
+            ..writeIf(!onlyStops, plural ? 'adresser eller ' : 'adress eller ')
+            ..write(plural ? 'hållplatser' : 'hållplats')
+            ..writeIf(description != null, '. $description.'))
+          .toString())));
 }
 
 String lineIdFromJourneyId(String journeyId) => '${journeyId.substring(0, 3)}1${journeyId.substring(4, 11)}00000';

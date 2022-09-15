@@ -166,16 +166,29 @@ class TripResultWidget extends StatelessWidget {
         ));
   }
 
-  Future<Iterable<Trip>?> _getTrip(DateTime? dateTime, {bool addMore = false}) async {
+  Future<Iterable<Trip>> _getTrip(DateTime? dateTime, {bool addMore = false, bool refresh = false}) async {
+    Location? from = _from, to = _to;
+
+    if (_from is CurrentLocation) {
+      var currentLocation = (_from as CurrentLocation);
+      from = addMore ? currentLocation.cachedLocation : await currentLocation.location(forceRefresh: refresh);
+    }
+    if (_to is CurrentLocation) {
+      var currentLocation = (_to as CurrentLocation);
+      to = addMore ? currentLocation.cachedLocation : await currentLocation.location(forceRefresh: refresh);
+    }
+
+    if (from == null || to == null) return Future.error(NoLocationError());
+
     var trips = await reseplaneraren.getTrip(
-      originId: _from is StopLocation ? (_from as StopLocation).id : null,
-      destId: _to is StopLocation ? (_to as StopLocation).id : null,
-      originCoordLat: _from is StopLocation ? null : _from.lat,
-      originCoordLong: _from is StopLocation ? null : _from.lon,
-      originCoordName: _from is StopLocation ? null : _from.name,
-      destCoordLat: _to is StopLocation ? null : _to.lat,
-      destCoordLong: _to is StopLocation ? null : _to.lon,
-      destCoordName: _to is StopLocation ? null : _to.name,
+      originId: from is StopLocation ? from.id : null,
+      destId: to is StopLocation ? to.id : null,
+      originCoordLat: from is StopLocation ? null : from.lat,
+      originCoordLong: from is StopLocation ? null : from.lon,
+      originCoordName: from is StopLocation ? null : from.name,
+      destCoordLat: to is StopLocation ? null : to.lat,
+      destCoordLong: to is StopLocation ? null : to.lon,
+      destCoordName: to is StopLocation ? null : to.name,
       dateTime: dateTime,
       additionalChangeTime: _tripOptions.changeMarginOptions.minutes,
       wheelChairSpace: _tripOptions.wheelchairOptions.wheelchair ? true : null,
