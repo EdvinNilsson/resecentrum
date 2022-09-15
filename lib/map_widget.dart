@@ -3,9 +3,13 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:intl/intl.dart';
 import 'package:maplibre_gl/mapbox_gl.dart';
 
 import 'departure_board_result_widget.dart';
@@ -37,7 +41,16 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   final List<MapFocusable<Stop>> _stops = [];
   final List<MapFocusable<Walk>> _walks = [];
 
+  final dynamic _walksGeoJson = {'type': 'FeatureCollection', 'features': []};
+  final dynamic _linesGeoJson = {'type': 'FeatureCollection', 'features': []};
+  final dynamic _lineStopsGeoJson = {'type': 'FeatureCollection', 'features': []};
+  final dynamic _stopsGeoJson = {'type': 'FeatureCollection', 'features': []};
+
+  late final double devicePixelRatio;
+  late final Color primaryColor;
+
   Timer? _timer;
+  Ticker? _ticker;
 
   final LatLngBounds _mapBounds =
       LatLngBounds(southwest: const LatLng(55.02652, 10.54138), northeast: const LatLng(69.06643, 24.22472));
@@ -49,51 +62,60 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   }
 
   @override
+  void didChangeDependencies() {
+    devicePixelRatio = (!kIsWeb ? MediaQuery.of(context).devicePixelRatio : 1);
+    primaryColor = Theme.of(context).primaryColor;
+    super.didChangeDependencies();
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance!.removeObserver(this);
     _timer?.cancel();
+    _ticker?.stop();
+    _ticker?.dispose();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_timer == null) return;
-    if (state != AppLifecycleState.resumed && _timer!.isActive) {
+    if (state != AppLifecycleState.resumed && _timer?.isActive == true) {
       _timer?.cancel();
-    } else if (state == AppLifecycleState.resumed && !_timer!.isActive) {
+    } else if (state == AppLifecycleState.resumed && _timer?.isActive == false) {
       _initTimer();
     }
   }
 
   void _onMapCreated(MaplibreMapController controller) {
     _mapController = controller;
+    _mapController.onFeatureTapped.add(_onFeatureTap);
   }
 
   @override
   Widget build(BuildContext context) {
     return MaplibreMap(
-        onMapCreated: _onMapCreated,
-        onCameraIdle: widget._mapJourneys.isEmpty ? _onCameraIdle : null,
-        trackCameraPosition: widget._mapJourneys.isEmpty,
-        initialCameraPosition:
-            CameraPosition(target: const LatLng(57.70, 11.97), zoom: widget._mapJourneys.isEmpty ? 13 : 11),
-        cameraTargetBounds: CameraTargetBounds(_mapBounds),
-        onStyleLoadedCallback: _onStyleLoadedCallback,
-        styleString: 'https://osm.vasttrafik.se/styles/osm_vt_basic/style.json',
-        myLocationEnabled: true,
-        myLocationRenderMode: MyLocationRenderMode.NORMAL,
-        onUserLocationUpdated: widget._mapJourneys.isEmpty ? _onUserLocationUpdated : null,
-        annotationOrder: const [AnnotationType.fill, AnnotationType.line, AnnotationType.circle, AnnotationType.symbol],
-        onMapClick: _onMapTap,
-        onMapLongClick: (point, coord) => _onMapTap(point, coord, longClick: true),
-        compassViewMargins: !kIsWeb && Platform.isAndroid
-            ? math.Point(MediaQuery.of(context).padding.right + 8, MediaQuery.of(context).padding.top + 8)
-            : const math.Point(8, 8),
-        attributionButtonMargins: const math.Point(-100, -100),
-        logoViewMargins: const math.Point(-100, -100));
+      onMapCreated: _onMapCreated,
+      onCameraIdle: widget._mapJourneys.isEmpty ? _onCameraIdle : null,
+      trackCameraPosition: widget._mapJourneys.isEmpty,
+      initialCameraPosition:
+          CameraPosition(target: const LatLng(57.70, 11.97), zoom: widget._mapJourneys.isEmpty ? 13 : 11),
+      cameraTargetBounds: CameraTargetBounds(_mapBounds),
+      onStyleLoadedCallback: _onStyleLoadedCallback,
+      styleString: 'https://osm.vasttrafik.se/styles/osm_vt_basic/style.json',
+      myLocationEnabled: true,
+      myLocationRenderMode: MyLocationRenderMode.NORMAL,
+      onUserLocationUpdated: widget._mapJourneys.isEmpty ? _onUserLocationUpdated : null,
+      onMapClick: _onMapTap,
+      minMaxZoomPreference: const MinMaxZoomPreference(4, null),
+      onMapLongClick: (point, coord) => _onMapTap(point, coord, longClick: true),
+      compassViewMargins: !kIsWeb && Platform.isAndroid
+          ? math.Point(MediaQuery.of(context).padding.right + 8, MediaQuery.of(context).padding.top + 8)
+          : const math.Point(8, 8),
+      attributionButtonMargins: const math.Point(-100, -100),
+    );
   }
 
-  void _onStyleLoadedCallback() {
+  void _onStyleLoadedCallback() async {
     for (var mapJourney in widget._mapJourneys) {
       if (mapJourney.journeyDetail != null) {
         _addJourneyDetail(mapJourney.journeyDetail!, mapJourney.journeyPart, mapJourney.focus);
@@ -110,7 +132,146 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     _addImageFromAsset('train', 'assets/train.png', true);
     _addImageFromAsset('railway', 'assets/railway.png', true);
 
+    await _mapController.addGeoJsonSource('walks', _walksGeoJson);
+    await _mapController.addGeoJsonSource('lines', _linesGeoJson);
+    await _mapController.addGeoJsonSource('line-stops', _lineStopsGeoJson);
+    await _mapController.addGeoJsonSource('vehicles', _getVehicleGeoJson(Duration.zero));
+
+    await _mapController.addLineLayer(
+      'walks',
+      'walks',
+      const LineLayerProperties(
+        lineColor: '#000000',
+        lineOpacity: 0.5,
+        lineWidth: 5,
+        lineBlur: 2,
+      ),
+      enableInteraction: false,
+    );
+
+    await _mapController.addCircleLayer(
+        'line-stops',
+        'line-stops-bg',
+        const CircleLayerProperties(
+          circleRadius: 9,
+          circleColor: [Expressions.get, 'fgColor'],
+        ),
+        enableInteraction: false);
+
+    await _mapController.addLineLayer(
+        'lines',
+        'lines-border',
+        const LineLayerProperties(
+          lineColor: [Expressions.get, 'fgColor'],
+          lineGapWidth: 5,
+        ),
+        enableInteraction: false);
+
+    await _mapController.addLineLayer(
+        'lines',
+        'lines',
+        const LineLayerProperties(
+          lineColor: [Expressions.get, 'bgColor'],
+          lineWidth: 5,
+        ),
+        enableInteraction: false);
+
+    if (widget._mapJourneys.isEmpty) {
+      await _mapController.addGeoJsonSource('stops', _stopsGeoJson);
+
+      await _mapController.addCircleLayer(
+          'stops',
+          'stops',
+          CircleLayerProperties(
+            circleColor: '#FFFFFF',
+            circleStrokeColor: primaryColor.toHexCode(),
+            circleStrokeWidth: 3,
+            circleRadius: [
+              Expressions.interpolate,
+              ['linear'],
+              ['zoom'],
+              12,
+              2,
+              12.5,
+              5,
+            ],
+            circleOpacity: [
+              Expressions.interpolate,
+              ['linear'],
+              ['zoom'],
+              12,
+              0,
+              12.5,
+              1,
+            ],
+            circleStrokeOpacity: [
+              Expressions.interpolate,
+              ['linear'],
+              ['zoom'],
+              12,
+              0,
+              12.5,
+              1,
+            ],
+          ),
+          minzoom: 12,
+          enableInteraction: false);
+    }
+
+    await _mapController.addCircleLayer(
+        'line-stops',
+        'line-stops',
+        const CircleLayerProperties(
+          circleColor: [Expressions.get, 'fgColor'],
+          circleRadius: 5,
+          circleStrokeColor: [Expressions.get, 'bgColor'],
+          circleStrokeWidth: 3,
+        ),
+        enableInteraction: false);
+
+    await _mapController.addCircleLayer(
+        'vehicles',
+        'vehicles-circle',
+        const CircleLayerProperties(
+          circleColor: [Expressions.get, 'bgColor'],
+          circleStrokeColor: [Expressions.get, 'fgColor'],
+          circleRadius: 16,
+          circleStrokeWidth: 1.5,
+          circleOpacity: [
+            Expressions.caseExpression,
+            [Expressions.get, 'outdated'],
+            0.5,
+            1
+          ],
+          circleStrokeOpacity: [
+            Expressions.caseExpression,
+            [Expressions.get, 'outdated'],
+            0.5,
+            1
+          ],
+        ));
+
+    await _mapController.addSymbolLayer(
+      'vehicles',
+      'vehicles-icon',
+      SymbolLayerProperties(
+        iconAllowOverlap: true,
+        iconImage: [Expressions.get, 'icon'],
+        iconSize: 0.25 * devicePixelRatio,
+        iconColor: [Expressions.get, 'fgColor'],
+        iconOpacity: [
+          Expressions.caseExpression,
+          [Expressions.get, 'outdated'],
+          0.5,
+          1
+        ],
+      ),
+    );
+
     _initTimer();
+
+    _ticker = Ticker(_updateInterpolation);
+    _ticker?.start();
   }
 
   void _initTimer() {
@@ -156,17 +317,70 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     }
   }
 
+  void _onFeatureTap(dynamic featureId, math.Point<double> point, LatLng latLng) async {
+    var vehicle = _vehicles.firstWhereOrNull((v) => v.journeyId == featureId);
+    if (vehicle == null) return;
+    _showVehicleSheet(vehicle);
+  }
+
+  Future<void> _showVehicleSheet(Vehicle vehicle) async {
+    var jd = _journeyDetailById[vehicle.journeyId]!;
+
+    double sqDist(s) =>
+        (s.lat - vehicle.position.lat) * (s.lat - vehicle.position.lat) +
+        (s.lon - vehicle.position.long) * (s.lon - vehicle.position.long);
+    int routeIdx = jd.stop.reduce((a, b) => sqDist(a) < sqDist(b) ? a : b).routeIdx;
+
+    await showModalBottomSheet(
+        context: context,
+        builder: (context) {
+          var bgLuminance = Theme.of(context).cardColor.computeLuminance();
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppBar(
+                  title: Row(
+                    children: [
+                      lineIcon(getValueAtRouteIdx(jd.journeyName, routeIdx).name, jd.fgColor, jd.bgColor, bgLuminance,
+                          jd.journeyType.first.type, '', null, context),
+                      const SizedBox(width: 12),
+                      Expanded(
+                          child: highlightFirstPart(getValueAtRouteIdx(jd.direction, routeIdx).direction,
+                              overflow: TextOverflow.fade))
+                    ],
+                  ),
+                  automaticallyImplyLeading: false),
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  child: StreamBuilder<VehiclePosition>(
+                      stream: vehicle.streamController.stream,
+                      builder: (context, snapshot) {
+                        var vehiclePosition = snapshot.data ?? vehicle.position;
+                        return Column(children: [
+                          Text('Senast uppdaterad:'
+                              '${DateFormat.MMMMEEEEd().add_Hms().format(vehiclePosition.updatedAt)}'),
+                          Text('Hastighet: ${vehiclePosition.speed.round()} km/h'),
+                        ]);
+                      }),
+                ),
+              ),
+            ],
+          );
+        });
+  }
+
   void _onMapTap(math.Point<double> point, LatLng coord, {bool longClick = false}) async {
     if (!longClick) {
       List<math.Point<num>> points =
           await _mapController.toScreenLocationBatch(_stops.map((stop) => LatLng(stop.item.lat, stop.item.lon)));
 
-      var touchRadius = math.pow(48 * _devicePixelRatio(context), 2);
+      var touchRadius = math.pow(48 * devicePixelRatio, 2);
 
       for (int i = 0; i < _stops.length; i++) {
         if (points[i].squaredDistanceTo(point) < touchRadius) {
           Stop stop = _stops[i].item;
-          DateTime? dateTime = stop.getDateTime().isAfter(DateTime.now()) ? stop.getDateTime() : null;
+          DateTime? dateTime = stop.getDateTime();
           _showDepartureSheet(stopRowFromStop(stop), stopAreaFromStopId(stop.id), stop.lat, stop.lon,
               dateTime: dateTime);
           return;
@@ -184,7 +398,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
                 bottom: false,
                 sliver: SliverToBoxAdapter(
                     child: Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 5, 10, 0),
+                  padding: const EdgeInsets.fromLTRB(8, 5, 8, 0),
                   child: _locationOptionsWidget(stopLocation),
                 )),
               ));
@@ -195,7 +409,8 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
 
     if (widget._mapJourneys.isEmpty) {
       var address = await reseplaneraren.getLocationNearbyAddress(coord.latitude, coord.longitude);
-      if (address == null || !address.isValid) return;
+      if (address == null) return;
+      if (_marker != null) _mapController.removeCircle(_marker!);
       _marker = await _mapController.addCircle(CircleOptions(
           geometry: LatLng(address.lat, address.lon),
           circleColor: Colors.red.toHexCode(),
@@ -263,13 +478,15 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
         mapJourney.geometry ?? await reseplaneraren.getGeometry(mapJourney.geometryRef!).suppress();
     if (geometry == null) return;
     for (var polyline in geometry) {
-      _mapController.addLine(LineOptions(
-          geometry: polyline.map((p) => LatLng(p.lat, p.lon)).toList(),
-          lineColor: '#000000',
-          lineOpacity: 0.5,
-          lineWidth: 5,
-          lineBlur: 2));
+      _walksGeoJson['features'].add({
+        'type': 'Feature',
+        'geometry': {
+          'type': 'LineString',
+          'coordinates': polyline.map((p) => [p.lon, p.lat]).toList(growable: false),
+        }
+      });
     }
+    _mapController.setGeoJsonSource('walks', _walksGeoJson);
     var start = geometry.first.first, end = geometry.last.last;
     _walks.add(MapFocusable(Walk(LatLng(start.lat, start.lon), LatLng(end.lat, end.lon)), mapJourney.focus));
     _updateBounds();
@@ -307,18 +524,19 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     }
   }
 
-  void _addLine(List<LatLng> points, Color color, Color borderColor) {
-    List<LineOptions> lines = [
-      LineOptions(geometry: points, lineColor: color.toHexCode(), lineWidth: 1, lineGapWidth: 5),
-      LineOptions(geometry: points, lineColor: borderColor.toHexCode(), lineWidth: 5)
-    ];
-    if (kIsWeb) {
-      for (var line in lines) {
-        _mapController.addLine(line);
+  void _addLine(List<LatLng> points, Color fgColor, Color bgColor) {
+    _linesGeoJson['features'].add({
+      'type': 'Feature',
+      'properties': {
+        'fgColor': fgColor.toHexCode(),
+        'bgColor': bgColor.toHexCode(),
+      },
+      'geometry': {
+        'type': 'LineString',
+        'coordinates': points.map((p) => p.toGeoJsonCoordinates()).toList(growable: false),
       }
-    } else {
-      _mapController.addLines(lines);
-    }
+    });
+    _mapController.setGeoJsonSource('lines', _linesGeoJson);
   }
 
   void _addStops(JourneyDetail journeyDetail, IdxJourneyPart? journeyPart, bool focus) {
@@ -330,13 +548,67 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     _stops.addAll(stops.map((stop) => MapFocusable(stop, focus)));
 
     for (var stop in stops) {
-      _mapController.addCircle(CircleOptions(
-          geometry: LatLng(stop.lat, stop.lon),
-          circleColor: journeyDetail.fgColor.toHexCode(),
-          circleRadius: 5,
-          circleStrokeColor: journeyDetail.bgColor.toHexCode(),
-          circleStrokeWidth: 3));
+      _lineStopsGeoJson['features'].add({
+        'type': 'Feature',
+        'id': stop.id.toString(),
+        'properties': {
+          'fgColor': journeyDetail.fgColor.toHexCode(),
+          'bgColor': journeyDetail.bgColor.toHexCode(),
+        },
+        'geometry': {
+          'type': 'Point',
+          'coordinates': [stop.lon, stop.lat],
+        }
+      });
     }
+    _mapController.setGeoJsonSource('line-stops', _lineStopsGeoJson);
+  }
+
+  Duration? _lastUpdate;
+
+  void _updateInterpolation(Duration elapsed) {
+    if (!mounted) return;
+    var deltaTime = (elapsed - (_lastUpdate ?? Duration.zero));
+    _lastUpdate = elapsed;
+    for (var feature in _getVehicleGeoJsonFeatures(deltaTime)) {
+      _mapController.setGeoJsonFeature('vehicles', feature);
+    }
+  }
+
+  double _quadratic(double a, b, c, x) => a * x * x + b * x + c;
+
+  Map<String, dynamic> _getVehicleGeoJson(Duration deltaTime) {
+    return {
+      'type': 'FeatureCollection',
+      'features': _getVehicleGeoJsonFeatures(deltaTime).toList(growable: false),
+    };
+  }
+
+  Iterable<Map<String, dynamic>> _getVehicleGeoJsonFeatures(Duration deltaTime) {
+    double dt = deltaTime.inMicroseconds / (Duration.microsecondsPerSecond * 2);
+    return _vehicles.map((vehicle) {
+      vehicle.t += dt;
+
+      double x = vehicle.t;
+
+      if (vehicle.t > 1) {
+        if (vehicle.position.speed < 10 || vehicle.t > 2) {
+          x = 1;
+        } else {
+          x = (vehicle.t - 1) / 2 + 1;
+        }
+      }
+
+      vehicle.interpolatedPosition =
+          LatLng(_quadratic(vehicle.ax, vehicle.bx, vehicle.cx, x), _quadratic(vehicle.ay, vehicle.by, vehicle.cy, x));
+
+      return {
+        'type': 'Feature',
+        'properties': vehicle.properties,
+        'id': vehicle.journeyId,
+        'geometry': {'type': 'Point', 'coordinates': vehicle.interpolatedPosition.toGeoJsonCoordinates()}
+      };
+    });
   }
 
   Vehicle? _getVehicle(VehiclePosition vehiclePosition) {
@@ -357,51 +629,34 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
 
   void _updatePosition(Timer timer) async {
     if (_journeyDetails.isEmpty) return;
+
     var response = await vehiclePositionsService.getPositions(_journeyIds);
 
     if (!mounted) return;
 
     if (response == null) {
       for (var vehicle in _vehicles) {
-        if (!vehicle.outdatedChanged(true)) continue;
-        var opacity = 0.5;
-        _mapController.updateCircle(
-            await vehicle.bgCircle, CircleOptions(circleOpacity: opacity, circleStrokeOpacity: opacity));
-        _mapController.updateSymbol(await vehicle.fgSymbol, SymbolOptions(iconOpacity: opacity));
+        vehicle.properties['outdated'] = true;
+        vehicle.updatePosition(vehicle.position, true, teleport: true);
       }
     } else {
       for (var vehiclePosition in response) {
         var vehicle = _getVehicle(vehiclePosition);
-        var coord = LatLng(vehiclePosition.lat, vehiclePosition.long);
         bool outdated = _isOutdated(vehiclePosition);
 
         if (vehicle != null) {
-          double? opacity = vehicle.outdatedChanged(outdated) ? (outdated ? 0.5 : 1) : null;
-          _mapController.updateCircle(await vehicle.bgCircle,
-              CircleOptions(geometry: coord, circleOpacity: opacity, circleStrokeOpacity: opacity));
-          _mapController.updateSymbol(await vehicle.fgSymbol, SymbolOptions(geometry: coord, iconOpacity: opacity));
+          vehicle.properties['outdated'] = outdated;
+          vehicle.updatePosition(vehiclePosition, outdated);
         } else {
-          Color fgColor = _journeyDetailById[vehiclePosition.journeyId]!.fgColor;
-          Color bgColor = _journeyDetailById[vehiclePosition.journeyId]!.bgColor;
-          String type = _journeyDetailById[vehiclePosition.journeyId]!.journeyType.first.type;
+          var journeyDetail = _journeyDetailById[vehiclePosition.journeyId]!;
 
-          _vehicles.add(Vehicle(
-              vehiclePosition.journeyId,
-              outdated,
-              _mapController.addCircle(CircleOptions(
-                  geometry: coord,
-                  circleColor: bgColor.toHexCode(),
-                  circleStrokeColor: fgColor.toHexCode(),
-                  circleRadius: 16,
-                  circleStrokeWidth: 1.5,
-                  circleOpacity: outdated ? 0.5 : null,
-                  circleStrokeOpacity: outdated ? 0.5 : null)),
-              _mapController.addSymbol(SymbolOptions(
-                  geometry: coord,
-                  iconImage: _getVehicleIconName(type),
-                  iconColor: fgColor.toHexCode(),
-                  iconSize: 0.25 * _devicePixelRatio(context),
-                  iconOpacity: outdated ? 0.5 : null))));
+          var fgColor = journeyDetail.fgColor;
+          var bgColor = journeyDetail.bgColor;
+          var type = journeyDetail.journeyType.first.type;
+
+          _vehicles.add(Vehicle(vehiclePosition.journeyId, outdated, vehiclePosition, type, bgColor, fgColor));
+
+          await _mapController.setGeoJsonSource('vehicles', _getVehicleGeoJson(Duration.zero));
         }
       }
     }
@@ -410,50 +665,32 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   Circle? _marker;
 
   final Set<StopLocation> _stopLocations = {};
-  final Map<int, Circle> _circleMap = {};
 
   Future<void> _updateNearbyStops() async {
     var coord = _mapController.cameraPosition?.target;
     if (coord == null) return;
 
-    // Remove all stops when zoomed out
-    if (_mapController.cameraPosition!.zoom < 12.5) {
-      await _mapController.removeCircles(_circleMap.values);
-      _circleMap.clear();
-      _stopLocations.clear();
-      return;
-    }
-
-    Set<StopLocation>? nearbyStops =
-        (await reseplaneraren.getLocationNearbyStops(coord.latitude, coord.longitude, maxNo: 1000, maxDist: 3000))
-            ?.where((stop) => stop.isStopArea)
-            .toSet();
+    Set<StopLocation>? nearbyStops = (await reseplaneraren
+            .getLocationNearbyStops(coord.latitude, coord.longitude, maxNo: 1000, maxDist: 3000)
+            .suppress())
+        ?.where((stop) => stop.isStopArea)
+        .toSet();
     if (nearbyStops == null || !mounted) return;
-
-    String color = Theme.of(context).primaryColor.toHexCode();
 
     Set<StopLocation> add = nearbyStops.difference(_stopLocations);
     _stopLocations.addAll(add);
 
-    var addedCircles = await _mapController.addCircles(add
-        .map((stop) => CircleOptions(
-            geometry: LatLng(stop.lat, stop.lon),
-            circleColor: '#FFFFFF',
-            circleStrokeColor: color,
-            circleStrokeWidth: 3,
-            circleRadius: 5))
-        .toList(growable: false));
-
-    for (int i = 0; i < add.length; i++) {
-      _circleMap[add.elementAt(i).id] = addedCircles[i];
+    for (var stop in add) {
+      _stopsGeoJson['features'].add({
+        'type': 'Feature',
+        'id': stop.id.toString(),
+        'geometry': {
+          'type': 'Point',
+          'coordinates': [stop.lon, stop.lat],
+        }
+      });
     }
-
-    Set<StopLocation> remove = _stopLocations.difference(nearbyStops);
-    _stopLocations.removeAll(remove);
-
-    var circlesToRemove = remove.map((s) => _circleMap.remove(s.id)).cast<Circle>().toList(growable: false);
-
-    await _mapController.removeCircles(circlesToRemove);
+    _mapController.setGeoJsonSource('stops', _stopsGeoJson);
   }
 
   Widget _locationOptionsWidget(Location location) {
@@ -514,7 +751,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     final StreamController<DepartureBoardWithTrafficSituations?> streamController = StreamController();
     _updateDepartureBoard(streamController, stopId, dateTime, lat, long);
 
-    var _context = widget._mapJourneys.isEmpty ? Scaffold.of(context).context : context;
+    var ctx = widget._mapJourneys.isEmpty ? Scaffold.of(context).context : context;
 
     showModalBottomSheet(
         context: context,
@@ -524,7 +761,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
           return DraggableScrollableSheet(
               expand: false,
               initialChildSize: 2 / (1 + math.sqrt(5)),
-              maxChildSize: 1 - MediaQuery.of(_context).padding.top / MediaQuery.of(_context).size.height,
+              maxChildSize: 1 - MediaQuery.of(ctx).padding.top / MediaQuery.of(ctx).size.height,
               builder: (context, scrollController) {
                 var appBar = SliverAppBar(title: header, pinned: true, automaticallyImplyLeading: false);
                 return StreamBuilder<DepartureBoardWithTrafficSituations?>(
@@ -532,13 +769,16 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
                   builder: (context, departureBoardWithTs) {
                     if (!departureBoardWithTs.hasData) {
                       return CustomScrollView(
+                          controller: scrollController,
                           slivers: [
-                        appBar,
-                        SliverFillRemaining(
-                            child: departureBoardWithTs.connectionState == ConnectionState.waiting
-                                ? loadingPage()
-                                : ErrorPage(() => _updateDepartureBoard(streamController, stopId, dateTime, lat, long)))
-                      ].insertIf(extraSliver != null, 1, extraSliver));
+                            appBar,
+                            SliverFillRemaining(
+                                child: departureBoardWithTs.connectionState == ConnectionState.waiting
+                                    ? loadingPage()
+                                    : ErrorPage(
+                                        () => _updateDepartureBoard(streamController, stopId, dateTime, lat, long),
+                                        error: departureBoardWithTs.error))
+                          ].insertIf(extraSliver != null, 1, extraSliver));
                     }
                     var bgLuminance = Theme.of(context).cardColor.computeLuminance();
                     return CustomScrollView(
@@ -577,7 +817,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     Wrapper<JourneyDetail> journeyDetail = Wrapper(null);
     _updateJourneyDetail(streamController, departure, journeyDetail);
 
-    var _context = widget._mapJourneys.isEmpty ? Scaffold.of(context).context : context;
+    var ctx = widget._mapJourneys.isEmpty ? Scaffold.of(context).context : context;
 
     showModalBottomSheet(
       context: context,
@@ -586,35 +826,42 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
         return DraggableScrollableSheet(
             expand: false,
             initialChildSize: 2 / (1 + math.sqrt(5)),
-            maxChildSize: 1 - MediaQuery.of(_context).padding.top / MediaQuery.of(_context).size.height,
+            maxChildSize: 1 - MediaQuery.of(ctx).padding.top / MediaQuery.of(ctx).size.height,
             builder: (context, scrollController) {
               return StreamBuilder<JourneyDetailWithTrafficSituations?>(
                   stream: streamController.stream,
                   builder: (context, journeyDetailWithTs) {
-                    if (journeyDetailWithTs.connectionState == ConnectionState.waiting) return loadingPage();
-                    if (!journeyDetailWithTs.hasData) {
-                      return ErrorPage(() => _updateJourneyDetail(streamController, departure, journeyDetail));
-                    }
                     var bgLuminance = Theme.of(context).cardColor.computeLuminance();
+                    var appBar = SliverAppBar(
+                        title: Row(
+                          children: [
+                            lineIconFromDeparture(departure, bgLuminance, context),
+                            const SizedBox(width: 12),
+                            Expanded(child: highlightFirstPart(departure.direction, overflow: TextOverflow.fade))
+                          ],
+                        ),
+                        pinned: true,
+                        automaticallyImplyLeading: false,
+                        actions: [
+                          IconButton(
+                              onPressed: () async {
+                                Navigator.pop(context);
+                                _showDepartureOnMap(departure, journeyDetail.element);
+                              },
+                              icon: const Icon(Icons.map))
+                        ]);
+                    if (!journeyDetailWithTs.hasData) {
+                      return CustomScrollView(controller: scrollController, slivers: [
+                        appBar,
+                        SliverFillRemaining(
+                            child: journeyDetailWithTs.connectionState == ConnectionState.waiting
+                                ? loadingPage()
+                                : ErrorPage(() => _updateJourneyDetail(streamController, departure, journeyDetail),
+                                    error: journeyDetailWithTs.error))
+                      ]);
+                    }
                     return CustomScrollView(controller: scrollController, slivers: [
-                      SliverAppBar(
-                          title: Row(
-                            children: [
-                              lineIconFromDeparture(departure, bgLuminance, context),
-                              const SizedBox(width: 12),
-                              Expanded(child: highlightFirstPart(departure.direction, overflow: TextOverflow.fade))
-                            ],
-                          ),
-                          pinned: true,
-                          automaticallyImplyLeading: false,
-                          actions: [
-                            IconButton(
-                                onPressed: () async {
-                                  Navigator.pop(context);
-                                  _showDepartureOnMap(departure, journeyDetail.element);
-                                },
-                                icon: const Icon(Icons.map))
-                          ]),
+                      appBar,
                       SliverSafeArea(
                           sliver: trafficSituationList(journeyDetailWithTs.data!.importantTs,
                               boldTitle: true, padding: const EdgeInsets.fromLTRB(10, 10, 10, 0)),
@@ -646,24 +893,6 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     } else {
       _getJourneyDetailAndAdd(
           JourneyDetailRef.fromDeparture(departure), FromStopIdJourneyPart(departure.stopId), false);
-    }
-  }
-
-  double _devicePixelRatio(context) => (!kIsWeb && Platform.isAndroid ? MediaQuery.of(context).devicePixelRatio : 1);
-
-  String _getVehicleIconName(String type) {
-    switch (type) {
-      case 'VAS':
-        return 'train';
-      case 'LDT':
-      case 'REG':
-        return 'railway';
-      case 'BOAT':
-        return 'boat';
-      case 'TRAM':
-        return 'tram';
-      default:
-        return 'bus';
     }
   }
 }
@@ -742,17 +971,92 @@ class MapFocusable<T> {
 
 class Vehicle {
   String journeyId;
-  Future<Circle> bgCircle;
-  Future<Symbol> fgSymbol;
-  late bool _outdated;
 
-  bool outdatedChanged(bool outdated) {
-    var changed = _outdated != outdated;
-    _outdated = outdated;
-    return changed;
+  VehiclePosition position;
+  late LatLng interpolatedPosition;
+
+  double ax = 0, bx = 0, cx = 0, dx = 0;
+  double ay = 0, by = 0, cy = 0, dy = 0;
+
+  double t = 0;
+
+  late Map<String, dynamic> properties;
+
+  String type;
+  Color bgColor, fgColor;
+
+  StreamController<VehiclePosition> streamController = StreamController.broadcast();
+
+  String _getVehicleIconName(String type) {
+    switch (type) {
+      case 'VAS':
+        return 'train';
+      case 'LDT':
+      case 'REG':
+        return 'railway';
+      case 'BOAT':
+        return 'boat';
+      case 'TRAM':
+        return 'tram';
+      default:
+        return 'bus';
+    }
   }
 
-  Vehicle(this.journeyId, this._outdated, this.bgCircle, this.fgSymbol);
+  void updatePosition(VehiclePosition newPosition, bool outdated, {bool teleport = false}) {
+    var distance = Geolocator.distanceBetween(
+        interpolatedPosition.latitude, interpolatedPosition.longitude, newPosition.lat, newPosition.long);
+
+    if (newPosition.updatedAt.isBefore(position.updatedAt) ||
+        position.updatedAt.isAtSameMomentAs(newPosition.updatedAt) &&
+            (newPosition.speed > 10 || distance < 1) &&
+            !teleport &&
+            !outdated) {
+      return;
+    }
+
+    if (teleport || distance > math.max(position.speed, 10)) {
+      interpolatedPosition = LatLng(newPosition.lat, newPosition.long);
+
+      ax = 0;
+      bx = newPosition.lat - interpolatedPosition.latitude;
+      cx = interpolatedPosition.latitude;
+
+      ay = 0;
+      by = newPosition.long - interpolatedPosition.longitude;
+      cy = interpolatedPosition.longitude;
+    } else {
+      if (t > 2) t = 0;
+
+      dx = 2 * ax * t + bx;
+      ax = newPosition.lat - interpolatedPosition.latitude - dx;
+      bx = dx;
+      cx = interpolatedPosition.latitude;
+
+      dy = 2 * ay * t + by;
+      ay = newPosition.long - interpolatedPosition.longitude - dy;
+      by = dy;
+      cy = interpolatedPosition.longitude;
+    }
+
+    t = 0;
+
+    position = newPosition;
+    streamController.add(newPosition);
+  }
+
+  Vehicle(this.journeyId, bool outdated, this.position, this.type, this.bgColor, this.fgColor) {
+    interpolatedPosition = LatLng(position.lat, position.long);
+    cx = position.lat;
+    cy = position.long;
+
+    properties = {
+      'icon': _getVehicleIconName(type),
+      'bgColor': bgColor.toHexCode(),
+      'fgColor': fgColor.toHexCode(),
+      'outdated': outdated,
+    };
+  }
 }
 
 class Walk {

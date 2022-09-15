@@ -707,22 +707,21 @@ Widget dateBar(DateTime dateTime, {bool showTime = true, double margin = 20}) {
 }
 
 LatLngBounds? fromPoints(Iterable<LatLng> points) {
-  if (points.isNotEmpty) {
-    double? minX, maxX, minY, maxY;
+  if (points.isEmpty) return null;
 
-    for (var point in points) {
-      double x = point.longitude;
-      double y = point.latitude;
+  double? minX, maxX, minY, maxY;
 
-      if (minX == null || minX > x) minX = x;
-      if (minY == null || minY > y) minY = y;
-      if (maxX == null || maxX < x) maxX = x;
-      if (maxY == null || maxY < y) maxY = y;
-    }
+  for (var point in points) {
+    double x = point.longitude;
+    double y = point.latitude;
 
-    return LatLngBounds(southwest: LatLng(minY!, minX!), northeast: LatLng(maxY!, maxX!));
+    if (minX == null || minX > x) minX = x;
+    if (minY == null || minY > y) minY = y;
+    if (maxX == null || maxX < x) maxX = x;
+    if (maxY == null || maxY < y) maxY = y;
   }
-  return null;
+
+  return LatLngBounds(southwest: LatLng(minY!, minX!), northeast: LatLng(maxY!, maxX!));
 }
 
 LatLngBounds? pad(LatLngBounds? bounds, double bufferRatio) {
