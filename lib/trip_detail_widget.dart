@@ -12,9 +12,9 @@ import 'utils.dart';
 
 class TripDetailWidget extends StatelessWidget {
   final Trip _trip;
-  final ChangeMarginOptions _changeMarginOptions;
+  final ChangeMarginGetter _tripOptions;
 
-  TripDetailWidget(this._trip, this._changeMarginOptions, {Key? key}) : super(key: key) {
+  TripDetailWidget(this._trip, this._tripOptions, {Key? key}) : super(key: key) {
     _streamController.add(_trip);
   }
 
@@ -291,7 +291,7 @@ class TripDetailWidget extends StatelessWidget {
     if (duration <= const Duration(minutes: 0) || walkSpeed > 10) {
       return iconAndText(Icons.warning, text, gap: 10, iconColor: Colors.red);
     }
-    if (walkSpeed > 6 || duration <= Duration(minutes: (_changeMarginOptions.minutes ?? 5) ~/ 2)) {
+    if (walkSpeed > 5 || duration <= Duration(minutes: (_tripOptions.changeMarginMinutes ?? 5) ~/ 2)) {
       return iconAndText(Icons.error, text, gap: 10, iconColor: Colors.orange);
     }
     return null;

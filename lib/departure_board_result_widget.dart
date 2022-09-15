@@ -135,33 +135,36 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
 Future<void> getDepartureBoard(StreamController streamController, int stopId, DateTime? dateTime,
     DepartureBoardOptions departureBoardOptions, StopLocation? direction, double lat, long,
     {int? timeSpan, bool addOnlyOnce = false, bool secondPass = false, bool ignoreError = false}) async {
-  var departuresRequest = reseplaneraren.getDepartureBoard(
-    stopId,
-    dateTime: dateTime,
-    direction: direction?.id,
-    timeSpan: timeSpan,
-    useTram: departureBoardOptions.toggleVehicleOptions.isSelected[0] ? null : false,
-    useBus: departureBoardOptions.toggleVehicleOptions.isSelected[1] ? null : false,
-    useVas: departureBoardOptions.toggleVehicleOptions.isSelected[2] ? null : false,
-    useRegTrain: departureBoardOptions.toggleVehicleOptions.isSelected[3] ? null : false,
-    useLDTrain: departureBoardOptions.toggleVehicleOptions.isSelected[3] ? null : false,
-    useBoat: departureBoardOptions.toggleVehicleOptions.isSelected[4] ? null : false,
-  );
-
-  Future<Iterable<Departure>?>? arrivalsRequest;
-  if (departureBoardOptions.includeArrivalOptions.includeArrivals && direction == null) {
-    arrivalsRequest = reseplaneraren.getArrivalBoard(
+  try {
+    var departuresRequest = reseplaneraren.getDepartureBoard(
       stopId,
-      dateTime: dateTime ?? DateTime.now(),
+      dateTime: dateTime,
+      direction: direction?.id,
       timeSpan: timeSpan,
-      useTram: departureBoardOptions.toggleVehicleOptions.isSelected[0] ? null : false,
-      useBus: departureBoardOptions.toggleVehicleOptions.isSelected[1] ? null : false,
-      useVas: departureBoardOptions.toggleVehicleOptions.isSelected[2] ? null : false,
-      useRegTrain: departureBoardOptions.toggleVehicleOptions.isSelected[3] ? null : false,
-      useLDTrain: departureBoardOptions.toggleVehicleOptions.isSelected[3] ? null : false,
-      useBoat: departureBoardOptions.toggleVehicleOptions.isSelected[4] ? null : false,
+      useTram: departureBoardOptions.services[0] ? null : false,
+      useBus: departureBoardOptions.services[1] ? null : false,
+      useVas: departureBoardOptions.services[2] ? null : false,
+      useRegTrain: departureBoardOptions.services[3] ? null : false,
+      useLDTrain: departureBoardOptions.services[3] ? null : false,
+      useBoat: departureBoardOptions.services[4] ? null : false,
     );
-  }
+
+    Future<Iterable<Departure>?>? arrivalsRequest;
+    if (departureBoardOptions.includeArrivals && direction == null) {
+      arrivalsRequest = reseplaneraren
+          .getArrivalBoard(
+            stopId,
+            dateTime: dateTime ?? DateTime.now(),
+            timeSpan: timeSpan,
+            useTram: departureBoardOptions.services[0] ? null : false,
+            useBus: departureBoardOptions.services[1] ? null : false,
+            useVas: departureBoardOptions.services[2] ? null : false,
+            useRegTrain: departureBoardOptions.services[3] ? null : false,
+            useLDTrain: departureBoardOptions.services[3] ? null : false,
+            useBoat: departureBoardOptions.services[4] ? null : false,
+          )
+          .suppress();
+    }
 
   Future<Iterable<TrafficSituation>?> ts = reseplaneraren.getTrafficSituationsByStopId(stopId);
 
@@ -174,18 +177,20 @@ Future<void> getDepartureBoard(StreamController streamController, int stopId, Da
     if (direction != null &&
         (departures.length < 20 || (dateTime ?? DateTime.now()).day != departures.last.dateTime.day) &&
         !secondPass) {
-      var departuresAfterMidnight = await reseplaneraren.getDepartureBoard(
-        stopId,
-        dateTime: (dateTime ?? DateTime.now()).startONextDay(),
-        direction: direction.id,
-        timeSpan: timeSpan,
-        useTram: departureBoardOptions.toggleVehicleOptions.isSelected[0] ? null : false,
-        useBus: departureBoardOptions.toggleVehicleOptions.isSelected[1] ? null : false,
-        useVas: departureBoardOptions.toggleVehicleOptions.isSelected[2] ? null : false,
-        useRegTrain: departureBoardOptions.toggleVehicleOptions.isSelected[3] ? null : false,
-        useLDTrain: departureBoardOptions.toggleVehicleOptions.isSelected[3] ? null : false,
-        useBoat: departureBoardOptions.toggleVehicleOptions.isSelected[4] ? null : false,
-      );
+      var departuresAfterMidnight = await reseplaneraren
+          .getDepartureBoard(
+            stopId,
+            dateTime: (dateTime ?? DateTime.now()).startONextDay(),
+            direction: direction.id,
+            timeSpan: timeSpan,
+            useTram: departureBoardOptions.services[0] ? null : false,
+            useBus: departureBoardOptions.services[1] ? null : false,
+            useVas: departureBoardOptions.services[2] ? null : false,
+            useRegTrain: departureBoardOptions.services[3] ? null : false,
+            useLDTrain: departureBoardOptions.services[3] ? null : false,
+            useBoat: departureBoardOptions.services[4] ? null : false,
+          )
+          .suppress();
 
       result = departures
           .followedBy(departuresAfterMidnight?.where((d) => !result.any((e) => e.journeyId == d.journeyId)) ?? [])

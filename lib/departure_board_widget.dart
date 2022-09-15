@@ -8,7 +8,7 @@ import 'reseplaneraren.dart';
 import 'trip_widget.dart';
 import 'utils.dart';
 
-DepartureBoardOptions departureBoardOptions = DepartureBoardOptions();
+BoxDepartureBoardOptions departureBoardOptions = BoxDepartureBoardOptions();
 
 class DepartureBoardWidget extends StatelessWidget {
   final TextEditingController _stopInput = RichTextEditingController();

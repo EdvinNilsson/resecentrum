@@ -20,7 +20,7 @@ class TripWidget extends StatelessWidget {
   final FocusNode _fromFocusNode = FocusNode();
   final FocusNode _toFocusNode = FocusNode();
 
-  final TripOptions _tripOptions = TripOptions();
+  final BoxTripOptions _tripOptions = BoxTripOptions();
 
   final GlobalKey<_TripHistoryListState> _tripHistoryKey = GlobalKey();
   final GlobalKey<_FavoritePlacesListState> _favoritePlacesKey = GlobalKey();
@@ -180,9 +180,8 @@ class TripWidget extends StatelessWidget {
       if (toFieldController.location == null) toFieldController.setErrorText('Saknar destination');
       return;
     }
-    addTripHistory(
-        fromFieldController.location!, toFieldController.location!, _tripOptions.viaFieldController.location);
-    await Navigator.push(context, MaterialPageRoute(builder: (context) {
+    addTripHistory(fromFieldController.location!, toFieldController.location!, _tripOptions.via);
+    Navigator.push(context, MaterialPageRoute(builder: (context) {
       return TripResultWidget(
           fromFieldController.location!,
           toFieldController.location!,

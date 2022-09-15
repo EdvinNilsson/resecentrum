@@ -1,68 +1,175 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 
+import 'extensions.dart';
 import 'location_searcher.dart';
 import 'main.dart';
 import 'reseplaneraren.dart';
 import 'utils.dart';
 
-class TripOptions {
-  ViaOptions viaOptions = ViaOptions();
-  ChangeMarginOptions changeMarginOptions = ChangeMarginOptions();
-  ToggleVehicleOptions toggleVehicleOptions = ToggleVehicleOptions(tripBox);
-  WheelchairOptions wheelchairOptions = WheelchairOptions();
+abstract class BoxOption {
+  late Box box;
+}
+
+abstract class TripOptions with ChangeMarginGetter, ServicesGetter, WheelchairGetter, ViaGetter, OptionsSummary {}
+
+abstract class DepartureBoardOptions with IncludeArrivalGetter, ServicesGetter, OptionsSummary {}
+
+abstract class ChangeMarginGetter {
+  int? get changeMarginMinutes;
+}
+
+abstract class ServicesGetter {
+  List<bool> get services;
+}
+
+abstract class WheelchairGetter {
+  bool get wheelchair;
+}
+
+abstract class ViaGetter {
+  StopLocation? get via;
+}
+
+abstract class IncludeArrivalGetter {
+  bool get includeArrivals;
+}
+
+abstract class OptionsSummary {
+  String? get summary;
+}
+
+class BoxTripOptions extends BoxOption
+    with ChangeMarginOption, ServicesOption, WheelchairOption, TripOptionsSummary
+    implements TripOptions {
+  BoxTripOptions() {
+    box = tripBox;
+  }
+
   LocationFieldController viaFieldController = LocationFieldController('via', tripBox);
   final TextEditingController viaInput = RichTextEditingController();
+
+  @override
+  StopLocation? get via => viaFieldController.location as StopLocation?;
 }
 
-class DepartureBoardOptions {
-  ToggleVehicleOptions toggleVehicleOptions = ToggleVehicleOptions(departureBoardBox);
-  IncludeArrivalOptions includeArrivalOptions = IncludeArrivalOptions();
+class ParamTripOptions extends TripOptions with TripOptionsSummary {
+  Map<String, String> params;
+
+  ParamTripOptions(this.params);
+
+  @override
+  int? get changeMarginMinutes => parseInt(params['changeMargin']);
+
+  @override
+  List<bool> get services =>
+      params['services']?.split('').map((s) => s == '1').toList(growable: false) ??
+      List.filled(serviceButtons.length, true);
+
+  @override
+  StopLocation? get via => parseLocation(params, 'via') as StopLocation?;
+
+  @override
+  bool get wheelchair => params['wheelchair'] == 'true';
 }
 
-class IncludeArrivalOptions {
-  bool get includeArrivals => departureBoardBox.get('includeArrivals', defaultValue: false);
+mixin TripOptionsSummary implements TripOptions {
+  @override
+  String? get summary {
+    List<String> changes = [];
 
-  set includeArrivals(bool value) => departureBoardBox.put('includeArrivals', value);
+    if (via != null) changes.add('Via ${via!.name.firstPart()}');
+
+    if (changeMarginMinutes == 2) {
+      changes.add('Kort bytesmarginal (2 min)');
+    } else if (changeMarginMinutes != null) {
+      var durationString = _TripOptionsPanelState.customChangeMarginDurationString(changeMarginMinutes!);
+      changes.add('Bytesmarginal ($durationString)');
+    }
+
+    if (!services.every((s) => s)) changes.add('Färdmedelsfilter');
+
+    if (wheelchair) changes.add('Rullstolsplats');
+
+    return changes.isNotEmpty ? changes.join(', ') : null;
+  }
 }
 
-class ViaOptions {
-  Location? viaStop;
+class BoxDepartureBoardOptions extends BoxOption
+    with IncludeArrivalOption, ServicesOption, DepartureBoardOptionsSummary
+    implements DepartureBoardOptions {
+  BoxDepartureBoardOptions() {
+    box = departureBoardBox;
+  }
 }
 
-class ToggleVehicleOptions {
-  final Box box;
+class ParamDepartureBoardOptions extends DepartureBoardOptions with DepartureBoardOptionsSummary {
+  Map<String, String> params;
 
-  ToggleVehicleOptions(this.box);
+  ParamDepartureBoardOptions(this.params);
 
-  List<bool> get isSelected => box.get('toggleVehicle', defaultValue: List.filled(vehicleButtons.length, true));
+  @override
+  bool get includeArrivals => params['includeArrivals'] == 'true';
+
+  @override
+  List<bool> get services =>
+      params['service']?.split('').map((s) => s == '1').toList(growable: false) ??
+      List.filled(serviceButtons.length, true);
+}
+
+mixin DepartureBoardOptionsSummary implements DepartureBoardOptions {
+  @override
+  String? get summary {
+    List<String> changes = [];
+    if (!services.every((s) => s)) changes.add('Färdmedelsfilter');
+    if (includeArrivals) changes.add('Inkluderar ankomster');
+    return changes.isNotEmpty ? changes.join(', ') : null;
+  }
+}
+
+mixin IncludeArrivalOption on BoxOption implements IncludeArrivalGetter {
+  @override
+  bool get includeArrivals => box.get('includeArrivals', defaultValue: false);
+
+  set includeArrivals(bool value) => box.put('includeArrivals', value);
+}
+
+mixin ServicesOption on BoxOption implements ServicesGetter {
+  @override
+  List<bool> get services => box.get('toggleVehicle', defaultValue: List.filled(serviceButtons.length, true));
 
   void toggle(int index) {
-    var temp = isSelected;
+    var temp = services;
     temp[index] = !temp[index];
     box.put('toggleVehicle', temp);
   }
 }
 
-class ToggleVehicleButtons extends StatefulWidget {
-  final ToggleVehicleOptions toggleVehicleOptions;
+class ServiceButtons extends StatefulWidget {
+  final ServicesOption servicesOption;
 
-  const ToggleVehicleButtons(this.toggleVehicleOptions, {Key? key}) : super(key: key);
+  const ServiceButtons(this.servicesOption, {Key? key}) : super(key: key);
 
   @override
-  State<ToggleVehicleButtons> createState() => _ToggleVehicleButtonsState();
+  State<ServiceButtons> createState() => _ServiceButtonsState();
 }
 
-class _ToggleVehicleButtonsState extends State<ToggleVehicleButtons> {
+class _ServiceButtonsState extends State<ServiceButtons> {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) => ToggleButtons(
         color: Theme.of(context).hintColor,
         constraints: BoxConstraints.expand(
-            width: (constraints.maxWidth - widget.toggleVehicleOptions.isSelected.length - 1) /
-                widget.toggleVehicleOptions.isSelected.length),
-        children: vehicleButtons
+            width: (constraints.maxWidth - widget.servicesOption.services.length - 1) /
+                widget.servicesOption.services.length),
+        onPressed: (int index) {
+          setState(() {
+            widget.servicesOption.toggle(index);
+          });
+        },
+        isSelected: widget.servicesOption.services,
+        children: serviceButtons
             .map((v) => Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
                   child: Column(
@@ -74,69 +181,71 @@ class _ToggleVehicleButtonsState extends State<ToggleVehicleButtons> {
                   ),
                 ))
             .toList(growable: false),
-        onPressed: (int index) {
-          setState(() {
-            widget.toggleVehicleOptions.toggle(index);
-          });
-        },
-        isSelected: widget.toggleVehicleOptions.isSelected,
       ),
     );
   }
 }
 
-class ChangeMarginOptions {
-  ChangeMargin get dropdownValue =>
-      ChangeMargin.values[tripBox.get('changeMargin', defaultValue: ChangeMargin.normal.index)];
+mixin ChangeMarginOption on BoxOption implements ChangeMarginGetter {
+  ChangeMargin get changeMarginDropdownValue =>
+      ChangeMargin.values[box.get('changeMargin', defaultValue: ChangeMargin.normal.index)];
 
-  set dropdownValue(ChangeMargin value) => tripBox.put('changeMargin', value.index);
+  set changeMarginDropdownValue(ChangeMargin value) => box.put('changeMargin', value.index);
 
-  int? get minutes {
-    if (dropdownValue == ChangeMargin.custom) return tripBox.get('changeMarginMinutes');
-    return dropdownValue == ChangeMargin.short ? 2 : null;
+  @override
+  int? get changeMarginMinutes {
+    if (changeMarginDropdownValue == ChangeMargin.custom) return box.get('changeMarginMinutes');
+    return changeMarginDropdownValue == ChangeMargin.short ? 2 : null;
   }
 
-  set minutes(int? value) => tripBox.put('changeMarginMinutes', value);
+  set changeMarginMinutes(int? value) => box.put('changeMarginMinutes', value);
 }
 
-class WheelchairOptions {
-  bool get wheelchair => tripBox.get('wheelchair', defaultValue: false);
+mixin WheelchairOption on BoxOption implements WheelchairGetter {
+  @override
+  bool get wheelchair => box.get('wheelchair', defaultValue: false);
 
-  set wheelchair(bool value) => tripBox.put('wheelchair', value);
+  set wheelchair(bool value) => box.put('wheelchair', value);
 }
 
 enum ChangeMargin { short, normal, custom }
 
-class ToggleVehicle {
+class Service {
   final IconData icon;
   final String name;
 
-  const ToggleVehicle(this.icon, this.name);
+  const Service(this.icon, this.name);
 }
 
-List<ToggleVehicle> vehicleButtons = const [
-  ToggleVehicle(Icons.tram, 'Spårvagn'),
-  ToggleVehicle(Icons.directions_bus, 'Buss'),
-  ToggleVehicle(Icons.train, 'Västtåg'),
-  ToggleVehicle(Icons.directions_railway, 'Övriga tåg'),
-  ToggleVehicle(Icons.directions_boat, 'Båt'),
+List<Service> serviceButtons = const [
+  Service(Icons.tram, 'Spårvagn'),
+  Service(Icons.directions_bus, 'Buss'),
+  Service(Icons.train, 'Västtåg'),
+  Service(Icons.directions_railway, 'Övriga tåg'),
+  Service(Icons.directions_boat, 'Båt'),
 ];
 
-class TripOptionsPanel extends StatefulWidget {
-  final TripOptions tripOptions;
+class TripOptionsPanel extends StatefulWidget implements OptionsPanel {
+  final BoxTripOptions tripOptions;
 
   const TripOptionsPanel(this.tripOptions, {Key? key}) : super(key: key);
 
   @override
   State<TripOptionsPanel> createState() => _TripOptionsPanelState();
+
+  @override
+  String? get summary => tripOptions.summary;
 }
 
 class _TripOptionsPanelState extends _OptionsPanelState<TripOptionsPanel> {
+  static String customChangeMarginDurationString(int minutes) =>
+      '${getDurationString(Duration(minutes: minutes))}${minutes >= 5 ? ' extra marginal' : ''}';
+
   String get customText {
-    var minutes = widget.tripOptions.changeMarginOptions.minutes;
-    return widget.tripOptions.changeMarginOptions.dropdownValue != ChangeMargin.custom || minutes == null
+    var minutes = widget.tripOptions.changeMarginMinutes;
+    return widget.tripOptions.changeMarginDropdownValue != ChangeMargin.custom || minutes == null
         ? 'Anpassad'
-        : 'Anpassad (${getDurationString(Duration(minutes: minutes))}${minutes >= 5 ? ' extra marginal' : ''})';
+        : 'Anpassad (${customChangeMarginDurationString(minutes)})';
   }
 
   _TripOptionsPanelState();
@@ -144,15 +253,9 @@ class _TripOptionsPanelState extends _OptionsPanelState<TripOptionsPanel> {
   @override
   List<Widget> children() {
     var items = [
-      const DropdownMenuItem(
-        child: Text('Kort (2 min)'),
-        value: ChangeMargin.short,
-      ),
-      const DropdownMenuItem(
-        child: Text('Normal (oftast 5 min)'),
-        value: ChangeMargin.normal,
-      ),
-      DropdownMenuItem(child: Text(customText), value: ChangeMargin.custom),
+      const DropdownMenuItem(value: ChangeMargin.short, child: Text('Kort (2 min)')),
+      const DropdownMenuItem(value: ChangeMargin.normal, child: Text('Normal (oftast 5 min)')),
+      DropdownMenuItem(value: ChangeMargin.custom, child: Text(customText)),
     ];
 
     return [
@@ -164,51 +267,96 @@ class _TripOptionsPanelState extends _OptionsPanelState<TripOptionsPanel> {
       const SizedBox(height: 16),
       const Text('Bytesmarginal'),
       DropdownButton<ChangeMargin>(
-          value: widget.tripOptions.changeMarginOptions.dropdownValue,
+          value: widget.tripOptions.changeMarginDropdownValue,
           onChanged: (ChangeMargin? newValue) {
             if (newValue == ChangeMargin.custom) {
               _customChangeMargin().then((minutes) {
                 if (minutes == null) return;
-                widget.tripOptions.changeMarginOptions.minutes = minutes;
+                widget.tripOptions.changeMarginMinutes = minutes;
                 setState(() {
-                  widget.tripOptions.changeMarginOptions.dropdownValue = ChangeMargin.custom;
+                  widget.tripOptions.changeMarginDropdownValue = ChangeMargin.custom;
                 });
               });
             } else {
-              widget.tripOptions.changeMarginOptions.minutes = newValue == ChangeMargin.short ? 2 : null;
+              widget.tripOptions.changeMarginMinutes = newValue == ChangeMargin.short ? 2 : null;
               setState(() {
-                widget.tripOptions.changeMarginOptions.dropdownValue = newValue!;
+                widget.tripOptions.changeMarginDropdownValue = newValue!;
               });
             }
           },
           items: items),
-      if (widget.tripOptions.changeMarginOptions.dropdownValue == ChangeMargin.short ||
-          (widget.tripOptions.changeMarginOptions.minutes ?? 5) < 5)
+      if (widget.tripOptions.changeMarginDropdownValue == ChangeMargin.short ||
+          (widget.tripOptions.changeMarginMinutes ?? 5) < 5)
         Text('Med kort bytesmarginal gäller inte längre rätten till förseningsersättning',
             style: TextStyle(color: Theme.of(context).hintColor)),
       const SizedBox(height: 16),
       const Text('Färdmedel'),
       const SizedBox(height: 5),
-      ToggleVehicleButtons(widget.tripOptions.toggleVehicleOptions),
+      ServiceButtons(widget.tripOptions),
       CheckboxListTile(
-          value: widget.tripOptions.wheelchairOptions.wheelchair,
+          value: widget.tripOptions.wheelchair,
           onChanged: (newValue) {
             setState(() {
-              widget.tripOptions.wheelchairOptions.wheelchair = newValue ?? false;
+              widget.tripOptions.wheelchair = newValue ?? false;
             });
           },
           title: const Text('Rullstolsplats'))
     ];
   }
+
+  int? _parseChangeMargin(String text) {
+    int? minutes = int.tryParse(text);
+    return minutes != null && minutes > 0 && minutes <= 600 ? minutes : null;
+  }
+
+  Future<int?> _customChangeMargin() async {
+    var textController = TextEditingController();
+    var valid = ValueNotifier<bool>(false);
+    return showDialog<int?>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('Ange bytesmarginal'),
+            content: TextField(
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(signed: false, decimal: false),
+              onChanged: (value) => valid.value = _parseChangeMargin(value) != null,
+              onSubmitted: (value) {
+                var minutes = _parseChangeMargin(value);
+                if (minutes == null) return;
+                Navigator.pop(context, minutes);
+              },
+              controller: textController,
+              decoration: const InputDecoration(hintText: 'Ange antal minuter'),
+            ),
+            actions: [
+              TextButton(
+                child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
+                onPressed: () => Navigator.pop(context),
+              ),
+              ValueListenableBuilder(
+                valueListenable: valid,
+                builder: (BuildContext context, bool value, Widget? child) => TextButton(
+                  onPressed: value ? () => Navigator.pop(context, _parseChangeMargin(textController.text)) : null,
+                  child: Text(MaterialLocalizations.of(context).okButtonLabel),
+                ),
+              ),
+            ],
+          );
+        });
+  }
 }
 
-class DepartureBoardOptionsPanel extends StatefulWidget {
-  final DepartureBoardOptions departureBoardOptions;
+class DepartureBoardOptionsPanel extends StatefulWidget implements OptionsPanel {
+  final BoxDepartureBoardOptions departureBoardOptions;
 
   const DepartureBoardOptionsPanel(this.departureBoardOptions, {Key? key}) : super(key: key);
 
   @override
   State<DepartureBoardOptionsPanel> createState() => _DepartureBoardOptionsPanel();
+
+  @override
+  String? get summary => departureBoardOptions.summary;
 }
 
 class _DepartureBoardOptionsPanel extends _OptionsPanelState<DepartureBoardOptionsPanel> {
@@ -219,12 +367,12 @@ class _DepartureBoardOptionsPanel extends _OptionsPanelState<DepartureBoardOptio
     return [
       const Text('Färdmedel'),
       const SizedBox(height: 5),
-      ToggleVehicleButtons(widget.departureBoardOptions.toggleVehicleOptions),
+      ServiceButtons(widget.departureBoardOptions),
       CheckboxListTile(
-        value: widget.departureBoardOptions.includeArrivalOptions.includeArrivals,
+        value: widget.departureBoardOptions.includeArrivals,
         onChanged: (newValue) {
           setState(() {
-            widget.departureBoardOptions.includeArrivalOptions.includeArrivals = newValue ?? false;
+            widget.departureBoardOptions.includeArrivals = newValue ?? false;
           });
         },
         title: const Text('Inkludera ankomster'),
@@ -233,7 +381,11 @@ class _DepartureBoardOptionsPanel extends _OptionsPanelState<DepartureBoardOptio
   }
 }
 
-abstract class _OptionsPanelState<T extends StatefulWidget> extends State<T> {
+abstract class OptionsPanel extends StatefulWidget implements OptionsSummary {
+  const OptionsPanel({Key? key}) : super(key: key);
+}
+
+abstract class _OptionsPanelState<T extends OptionsPanel> extends State<T> {
   bool expanded = false;
 
   List<Widget> children();
@@ -253,8 +405,14 @@ abstract class _OptionsPanelState<T extends StatefulWidget> extends State<T> {
           backgroundColor: expanded ? null : Theme.of(context).canvasColor,
           canTapOnHeader: true,
           headerBuilder: (BuildContext context, bool isExpanded) {
-            return ListTile(
-              title: Text('Fler alternativ', style: TextStyle(color: Theme.of(context).hintColor)),
+            var summaryText = widget.summary;
+            return AnimatedSize(
+              duration: kThemeAnimationDuration,
+              curve: Curves.easeInOut,
+              child: ListTile(
+                title: Text('Alternativ', style: TextStyle(color: Theme.of(context).hintColor)),
+                subtitle: !expanded && summaryText != null ? Text(summaryText) : null,
+              ),
             );
           },
           body: Padding(
@@ -268,48 +426,5 @@ abstract class _OptionsPanelState<T extends StatefulWidget> extends State<T> {
         ),
       ],
     );
-  }
-
-  int? _parseChangeMargin(String text) {
-    int? minutes = int.tryParse(text);
-    return minutes != null && minutes > 0 && minutes <= 600 ? minutes : null;
-  }
-
-  Future<int?> _customChangeMargin() async {
-    TextEditingController textController = TextEditingController();
-    return showDialog<int?>(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: const Text('Ange minsta bytesmarginal'),
-            content: TextField(
-              autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(signed: false, decimal: false),
-              onSubmitted: (value) {
-                Navigator.pop(context, _parseChangeMargin(value));
-              },
-              controller: textController,
-              decoration: const InputDecoration(hintText: 'Ange antal minuter'),
-            ),
-            actions: [
-              TextButton(
-                child: const Text('AVBRYT'),
-                onPressed: () {
-                  setState(() {
-                    Navigator.pop(context);
-                  });
-                },
-              ),
-              TextButton(
-                child: const Text('OK'),
-                onPressed: () {
-                  setState(() {
-                    Navigator.pop(context, _parseChangeMargin(textController.text));
-                  });
-                },
-              ),
-            ],
-          );
-        });
   }
 }
