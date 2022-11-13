@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:collection/collection.dart';
 import 'package:dio/dio.dart';
@@ -675,8 +678,10 @@ class _DateTimeSelectorState extends State<DateTimeSelector> {
                         ),
                         readOnly: true,
                         onTap: () async {
-                          var pickedTime = await showTimePicker(
-                              initialTime: widget.controller.time ?? TimeOfDay.now(), context: context);
+                          var pickedTime = !kIsWeb && Platform.isAndroid
+                              ? await showNativeTimePicker(widget.controller.time ?? TimeOfDay.now())
+                              : await showTimePicker(
+                                  initialTime: widget.controller.time ?? TimeOfDay.now(), context: context);
                           if (pickedTime == null) return;
                           setState(() {
                             widget._timeInput.text = pickedTime.format(context);
@@ -1186,6 +1191,13 @@ Future<void> createShortcut(BuildContext context, String uri, String label, Stri
 }
 
 Future<int?> androidSdk() => platform.invokeMethod<int>('sdk');
+
+Future<TimeOfDay?> showNativeTimePicker(TimeOfDay initialTime) async {
+  Int32List? list =
+      await platform.invokeMethod<Int32List?>('timePicker', {'hour': initialTime.hour, 'minute': initialTime.minute});
+  if (list == null) return null;
+  return TimeOfDay(hour: list[0], minute: list[1]);
+}
 
 Location? parseLocation(Map<String, String> params, String? prefix) {
   if (params.containsKey(_addPrefix('id', prefix))) {
