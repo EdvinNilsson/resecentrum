@@ -187,7 +187,11 @@ class Trafikverket {
 <QUERY objecttype="TrainMessage" schemaversion="1.7" orderby="LastUpdateDateTime desc">
     <FILTER>
         <AND>
-            <EQ name="TrafficImpact.AffectedLocation.LocationSignature" value="$locationSignature" />
+            <OR>
+                <EQ name="TrafficImpact.AffectedLocation.LocationSignature" value="$locationSignature" />
+                <EQ name='TrafficImpact.FromLocation' value='$locationSignature'/>
+                <EQ name='TrafficImpact.ToLocation' value='$locationSignature'/>
+			      </OR>
             <EQ name="TrafficImpact.AffectedLocation.ShouldBeTrafficInformed" value="true" />
             <LTE name="StartDateTime" value="${end.toIso8601String()}" />
             <GTE name="PrognosticatedEndDateTimeTrafficImpact" value="${start.toIso8601String()}" />
@@ -230,13 +234,18 @@ class Trafikverket {
         <EQ name="LocationSignature" value="$locationSignature" />
             <AND>
                 <LT name="AdvertisedTimeAtLocation" value="${dateTime.toIso8601String()}" />
+                <EQ name='Advertised' value='true'/>
                 <OR>
                     <GTE name="EstimatedTimeAtLocation" value="${dateTime.toIso8601String()}" />
                     <AND>
                         <EXISTS name="TimeAtLocation" value="false" />
                         <OR>
-                            <GTE name="AdvertisedTimeAtLocation" value="${dateTime.subtract(const Duration(minutes: 15))}" />
-                            <GTE name="EstimatedTimeAtLocation" value="${dateTime.subtract(const Duration(minutes: 15))}" />
+                            <GTE name="AdvertisedTimeAtLocation" value="${dateTime.subtract(const Duration(hours: 1))}" />
+                            <GTE name="EstimatedTimeAtLocation" value="${dateTime.subtract(const Duration(hours: 1))}" />
+                            <AND>
+                                <GTE name="AdvertisedTimeAtLocation" value="${dateTime.subtract(const Duration(hours: 12))}" />
+                                <IN name="Deviation.Code" value="ANA088" />
+                            </AND>
                         </OR>
                         <EQ name="Canceled" value="false" />
                     </AND>
