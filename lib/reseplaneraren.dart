@@ -1001,10 +1001,14 @@ class TrafficSituation implements TS {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is TrafficSituation && runtimeType == other.runtimeType && situationNumber == other.situationNumber;
+      other is TrafficSituation &&
+          runtimeType == other.runtimeType &&
+          title == other.title &&
+          description == other.description &&
+          severity == other.severity;
 
   @override
-  int get hashCode => situationNumber.hashCode;
+  int get hashCode => title.hashCode ^ description.hashCode ^ severity.hashCode;
 
   @override
   Widget display(BuildContext context, {bool boldTitle = false, bool showAffectedStop = false}) {
@@ -1105,6 +1109,6 @@ class TSJourney {
 
   TSJourney(dynamic data) {
     gid = data['gid'];
-    line = data['line'].map((l) => TSLine(l));
+    line = TSLine(data['line']);
   }
 }

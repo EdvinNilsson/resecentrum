@@ -142,21 +142,23 @@ Future<JourneyDetailWithTrafficSituations> getJourneyDetail(
   Future<void>? mgateExtra;
   if (!isTrainType(type)) mgateExtra = reseplaneraren.setMgateExtra(evaDateTime, evaId, response);
 
-  var journeyTs = reseplaneraren.getTrafficSituationsByJourneyId(journeyId).suppress();
+  var journeyTsReq = reseplaneraren.getTrafficSituationsByJourneyId(journeyId).suppress();
   var lineTs = reseplaneraren.getTrafficSituationsByLineId(lineIdFromJourneyId(journeyId)).suppress();
 
   var journeyDetail = await response;
 
   if (journeyDetail.journeyId.length > 1) {
     for (var journey in journeyDetail.journeyId.where((j) => j.id != journeyId)) {
-      journeyTs = journeyTs.then((ts) async =>
+      journeyTsReq = journeyTsReq.then((ts) async =>
           ts?.followedBy((await reseplaneraren.getTrafficSituationsByJourneyId(journey.id).suppress()) ?? []));
       lineTs = lineTs.then((ts) async => ts?.followedBy(
           (await reseplaneraren.getTrafficSituationsByLineId(lineIdFromJourneyId(journey.id)).suppress()) ?? []));
     }
-    journeyTs = journeyTs.then((ts) => ts?.toSet());
+    journeyTsReq = journeyTsReq.then((ts) => ts?.toSet());
     lineTs = lineTs.then((ts) => ts?.toSet());
   }
+
+  var journeyTs = await journeyTsReq;
 
   var stopIds = journeyDetail.stop.map((s) => s.id).toList();
   var filteredLineTs = (await lineTs)
@@ -164,13 +166,11 @@ Future<JourneyDetailWithTrafficSituations> getJourneyDetail(
           isPresent(ts.startTime, ts.endTime, journeyDetail.stop.first.getDateTime(),
               journeyDetail.stop.last.getDateTime()) &&
           _isAffectingThisDirection(ts, stopIds, journeyDetail.direction.last) &&
-          _isAffectingThisJourney(ts, journeyDetail.journeyId))
+          _isAffectingThisJourney(ts, journeyDetail.journeyId) &&
+          (journeyTs?.every((jts) => jts.situationNumber != ts.situationNumber) ?? true))
       .sortTs(journeyDetail.stop.first.getDateTime());
   Iterable<TS> severeTs = [
-    (await journeyTs)?.where((ts) => isPresent(
-            ts.startTime,
-            ts.endTime,
-            journeyDetail.stop.first.getDateTime().startOfDay(),
+    journeyTs?.where((ts) => isPresent(ts.startTime, ts.endTime, journeyDetail.stop.first.getDateTime().startOfDay(),
             journeyDetail.stop.first.getDateTime().startOfDay().add(const Duration(days: 1)))) ??
         [],
     filteredLineTs?.where((ts) => ts.severity == 'severe') ?? []
@@ -294,8 +294,8 @@ Future<JourneyDetailWithTrafficSituations> getJourneyDetail(
           ..addAll(trainJourney.map((t) => t.service).expand((d) => d.map((text) => Note(0, 'low', text))))
           ..addAll(trainJourney.map((t) => t.trainComposition).expand((d) => d.map((text) => Note(0, 'low', text))));
 
-        notes.addAll((await trafikverket.getTrainMessage(
-                trainJourney.map((t) => t.locationSignature), stops.first.getDateTime(), stops.last.getDateTime())) ??
+        notes.addAll((await trafikverket.getTrainMessage(trainJourney.map((t) => t.locationSignature).toSet(),
+                stops.first.getDateTime(), stops.last.getDateTime())) ??
             <TrainMessage>[]);
 
         normalTs = normalTs.followedBy(notes);
