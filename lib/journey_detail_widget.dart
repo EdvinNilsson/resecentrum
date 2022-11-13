@@ -330,16 +330,8 @@ class JourneyPartNote {
 
 RenderObjectWidget journeyDetailList(JourneyDetail journeyDetail, Iterable<Icon?> stopNoteIcons,
     {void Function(BuildContext, Stop)? onTap}) {
-  List<int> lineChanges = [];
+  List<int> startOfLineIdx = journeyDetail.journeyId.map((j) => j.routeIdxFrom).toList(growable: false);
   bool useHintColor = journeyDetail.stop.any((s) => (s.rtArrTime ?? s.rtDepTime) != null);
-
-  if (journeyDetail.journeyName.length > 1) {
-    String? previousName = journeyDetail.journeyName.first.name;
-    for (var journeyName in journeyDetail.journeyName) {
-      if (journeyName.name != previousName) lineChanges.add(journeyName.routeIdxFrom);
-      previousName = journeyName.name;
-    }
-  }
 
   return SliverPadding(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -367,24 +359,19 @@ RenderObjectWidget journeyDetailList(JourneyDetail journeyDetail, Iterable<Icon?
                 noteIcon: stopNoteIcons.elementAt(i),
                 constraints: const BoxConstraints(minHeight: 32),
                 useHintColor: useHintColor));
-        if (lineChanges.isNotEmpty) {
-          int j = lineChanges.indexOf(stop.routeIdx);
-          if (j >= 0 || i == 0) {
-            return Column(children: [
-              Padding(
-                  padding: const EdgeInsets.all(15),
-                  child: Text(
-                      (StringBuffer(i == 0 ? 'Börjar' : 'Fortsätter')
-                            ..write(' som linje ')
-                            ..write(getValueAtRouteIdx(journeyDetail.journeyName, stop.routeIdx).name)
-                            ..write(' mot ')
-                            ..write(getValueAtRouteIdx(journeyDetail.direction, stop.routeIdx).direction))
-                          .toString(),
-                      textAlign: TextAlign.center)),
-              const Divider(height: 0),
-              row
-            ]);
-          }
+        if (startOfLineIdx.length > 1 && startOfLineIdx.contains(stop.routeIdx)) {
+          var text = Padding(
+              padding: const EdgeInsets.all(15),
+              child: Text(
+                  (StringBuffer(i == 0 ? 'Börjar' : 'Fortsätter')
+                        ..write(' som linje ')
+                        ..write(getValueAtRouteIdx(journeyDetail.journeyName, stop.routeIdx).name)
+                        ..write(' mot ')
+                        ..write(getValueAtRouteIdx(journeyDetail.direction, stop.routeIdx).direction))
+                      .toString(),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Theme.of(context).hintColor)));
+          return Column(children: i == 0 ? [text, const Divider(height: 0), row] : [row, text]);
         }
         return row;
       },
