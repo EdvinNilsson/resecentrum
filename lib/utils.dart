@@ -1014,18 +1014,9 @@ class SystemGestureArea extends StatelessWidget {
   }
 }
 
-bool anyStopWithoutRtInfo(Iterable<Stop> stops) {
-  bool change = false;
-  for (int i = 0; i < stops.length; i++) {
-    var stop = stops.elementAt(i);
-    if ((stop.rtDepTime ?? stop.rtArrTime) != null) {
-      change = true;
-    } else if (change) {
-      return true;
-    }
-  }
-  return false;
-}
+bool anyStopWithoutRtInfo(Iterable<Stop> stops) => stops
+    .skipWhile((stop) => (stop.rtDepTime ?? stop.rtArrTime) == null)
+    .any((stop) => (stop.rtDepTime ?? stop.rtArrTime) == null);
 
 const List<int> tramStops = [
   1050, 1200, 1450, 1620, 1690, 1745, 1850, 1900, 2150, 2170, 2200, 2210, 2370, 2470, 2540, 2630, 2670, 2730, 2790,

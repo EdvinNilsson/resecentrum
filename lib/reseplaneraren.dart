@@ -403,7 +403,9 @@ class Reseplaneraren {
           (r['res']['common']['prodL']?.indexWhere((l) => journeyIds.contains(l['prodCtx']['matchId'])) ?? -1) as int);
 
       var journeys = indices
-          .mapIndexed((j, i) => i >= 0 ? stationBoard.data['svcResL'][j]['res']['jnyL'][i] : null)
+          .mapIndexed((svcRes, i) => i >= 0
+              ? stationBoard.data['svcResL'][svcRes]['res']['jnyL'].firstWhere((jny) => jny['prodX'] == i)
+              : null)
           .where((j) => j != null);
 
       bool lineChange = journeyDetail.journeyName.any((j) => j.name != journeyDetail.journeyName.last.name);
