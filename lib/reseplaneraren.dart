@@ -67,28 +67,22 @@ class Reseplaneraren {
   }
 
   Future<String> _authorize() async {
-    var dio = Dio(BaseOptions(
-      baseUrl: 'https://api.vasttrafik.se',
-      connectTimeout: 5000,
-      receiveTimeout: 5000,
-    ));
-
     const base64 = Base64Codec();
     const utf8 = Utf8Codec();
 
     const String auth = '${const String.fromEnvironment('AUTH_KEY')}:${const String.fromEnvironment('AUTH_SECRET')}';
-    String authHeader = 'Basic ${base64.encode(utf8.encode(auth))}';
 
-    dio.options.contentType = 'application/x-www-form-urlencoded';
-    dio.options.headers['Authorization'] = authHeader;
+    var dio = Dio(BaseOptions(
+        baseUrl: 'https://api.vasttrafik.se',
+        connectTimeout: 5000,
+        receiveTimeout: 5000,
+        contentType: Headers.formUrlEncodedContentType,
+        headers: {'Authorization': 'Basic ${base64.encode(utf8.encode(auth))}'}));
 
     try {
       var res =
           await dio.post('/token', queryParameters: {'grant_type': 'client_credentials', 'scope': 'device_$_uuid'});
 
-      if (kDebugMode) {
-        print(res.data['access_token']);
-      }
       return res.data['access_token'];
     } catch (e) {
       if (e is DioError && e.type == DioErrorType.response) throw DisplayableError('Autentisering misslyckades');
@@ -328,7 +322,7 @@ class Reseplaneraren {
     });
   }
 
-  Future<TimetableInfo?> getSystemInfo() async {
+  Future<TimetableInfo> getSystemInfo() async {
     return await _callApi('/systeminfo', {'format': 'json'}, (result) {
       var data = result.data['SystemInfo']['TimetableInfo'];
       checkHafasError(data);
@@ -583,11 +577,12 @@ class CurrentLocation extends Location {
     return '${super.name}, ${location?.name.firstPart() ?? (tried && location == null ? 'okänd' : 'söker...')}';
   }
 
-  Future<Location?> location({bool forceRefresh = false, onlyStops = false}) async {
+  Future<Location?> location({bool forceRefresh = false, bool onlyStops = false}) async {
     if (!forceRefresh &&
         _location != null &&
         tried &&
-        (lastUpdated?.isBefore(DateTime.now().add(const Duration(minutes: 1))) ?? false)) {
+        (lastUpdated?.isBefore(DateTime.now().add(const Duration(minutes: 1))) ?? false) &&
+        (!onlyStops || _location is StopLocation)) {
       return _location;
     }
 

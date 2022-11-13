@@ -61,8 +61,7 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
     if (updateIntermittently) _updateDepartureBoard(addOnlyOnce: true, ignoreError: true);
   }
 
-  final StreamController<DepartureBoardWithTrafficSituations?> _departureStreamController =
-      StreamController.broadcast();
+  final StreamController<DepartureBoardWithTrafficSituations> _departureStreamController = StreamController.broadcast();
 
   Future<void> _handleRefresh() async => _updateDepartureBoard(addOnlyOnce: true, ignoreError: true);
 
@@ -75,7 +74,7 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
             actions: supportShortcuts
                 ? <Widget>[
                     PopupMenuButton(
-                        onSelected: (value) => _createShortcut(),
+                        onSelected: (_) => _createShortcut(),
                         itemBuilder: (BuildContext context) => [
                               const PopupMenuItem(
                                   value: 0,
@@ -91,7 +90,7 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
           MediaQuery.of(context).systemGestureInsets,
           child: RefreshIndicator(
             onRefresh: () => _handleRefresh(),
-            child: StreamBuilder<DepartureBoardWithTrafficSituations?>(
+            child: StreamBuilder<DepartureBoardWithTrafficSituations>(
                 builder: (context, departureBoard) {
                   if (departureBoard.connectionState == ConnectionState.waiting) return loadingPage();
                   if (!departureBoard.hasData) return ErrorPage(_updateDepartureBoard, error: departureBoard.error);
@@ -271,7 +270,7 @@ Future<void> getDepartureBoard(StreamController streamController, int stopId, Da
       var departuresAfterMidnight = await reseplaneraren
           .getDepartureBoard(
             stopId,
-            dateTime: (dateTime ?? DateTime.now()).startONextDay(),
+            dateTime: (dateTime ?? DateTime.now()).startOfNextDay(),
             direction: direction.id,
             timeSpan: timeSpan,
             useTram: departureBoardOptions.services[0] ? null : false,

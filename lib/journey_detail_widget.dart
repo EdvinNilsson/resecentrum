@@ -277,18 +277,6 @@ Future<JourneyDetailWithTrafficSituations> getJourneyDetail(
       }
 
       if (trainJourney.isNotEmpty) {
-        var lastReport = trainJourney.lastWhereOrNull((t) => t.timeAtLocation != null);
-        if (lastReport != null) {
-          var lastStopIndex = stops.indexWhere((s) =>
-              (lastReport.activityType == 'Ankomst' ? s.arrDateTime : s.depDateTime)
-                  ?.isAtSameMomentAs(lastReport.advertisedTimeAtLocation) ??
-              false);
-          for (int i = 0; i < lastStopIndex; i++) {
-            stops[i].rtArrTime = null;
-            stops[i].rtDepTime = null;
-          }
-        }
-
         notes
           ..addAll(trainJourney.map((t) => t.booking).expand((d) => d.map((text) => Note(0, 'low', text))))
           ..addAll(trainJourney.map((t) => t.service).expand((d) => d.map((text) => Note(0, 'low', text))))

@@ -57,7 +57,6 @@ class TripWidget extends StatelessWidget {
                               }
                               return null;
                             });
-                            _fromInput.text = currentLocation.getName();
                           },
                           icon: const Icon(Icons.my_location))),
                   LocationField(toFieldController, _toInput, 'Till',

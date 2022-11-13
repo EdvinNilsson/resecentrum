@@ -281,13 +281,13 @@ class TripResultWidget extends StatelessWidget {
               l.journeyNumber == activity.advertisedTrainIdent &&
               l.destination.dateTime.isAtSameMomentAs(activity.advertisedTimeAtLocation));
           for (var leg in legs) {
-            leg.destination.rtDateTime = activity.timeAtLocation ??
-                activity.estimatedTimeAtLocation ??
+            leg.destination.rtDateTime = activity.estimatedTimeAtLocation ??
                 activity.plannedEstimatedTimeAtLocation ??
                 activity.advertisedTimeAtLocation;
             leg.destination.track = activity.trackAtLocation;
-            leg.destination.cancelled |= activity.canceled;
             if (activity.timeAtLocation != null) leg.destination.rtDateTime = null;
+            if (activity.deviation.contains('Spårändrat')) leg.destination.rtTrack = activity.trackAtLocation;
+            leg.destination.cancelled |= activity.canceled;
             setDepartureState(activity, leg.destination);
           }
         } else {
@@ -295,13 +295,13 @@ class TripResultWidget extends StatelessWidget {
               l.journeyNumber == activity.advertisedTrainIdent &&
               l.origin.dateTime.isAtSameMomentAs(activity.advertisedTimeAtLocation));
           for (var leg in legs) {
-            leg.origin.rtDateTime = activity.timeAtLocation ??
-                activity.estimatedTimeAtLocation ??
+            leg.origin.rtDateTime = activity.estimatedTimeAtLocation ??
                 activity.plannedEstimatedTimeAtLocation ??
                 activity.advertisedTimeAtLocation;
             leg.origin.track = activity.trackAtLocation;
-            leg.origin.cancelled |= activity.canceled;
             if (activity.timeAtLocation != null) leg.origin.rtDateTime = null;
+            if (activity.deviation.contains('Spårändrat')) leg.origin.rtTrack = activity.trackAtLocation;
+            leg.origin.cancelled |= activity.canceled;
             setDepartureState(activity, leg.origin);
             if (activity.deviation.isNotEmpty) leg.direction = '${leg.direction}, ${activity.deviation.join(', ')}';
           }
@@ -361,9 +361,7 @@ class TripResultWidget extends StatelessWidget {
       if (leg.notes.isNotEmpty || leg.origin.notes.isNotEmpty || leg.destination.notes.isNotEmpty) {
         var icon = _getNotesIconLeg(leg);
 
-        if (icon.icon == Icons.info_outline) {
-          icon = const Icon(Icons.info, color: Colors.white);
-        }
+        if (icon.icon == Icons.info) icon = const Icon(Icons.info, color: Colors.white);
 
         bool lowContrast = colorDiff(leg.bgColor!, icon.color ?? Theme.of(context).iconTheme.color!) <= 20;
 
@@ -458,13 +456,13 @@ class TripResultWidget extends StatelessWidget {
   Icon _getNotesIcon(Trip trip) {
     if (_noteOfSeverity(trip, 'high')) return getNoteIcon('high');
     if (_noteOfSeverity(trip, 'normal')) return getNoteIcon('normal');
-    return getNoteIcon('low');
+    return getNoteIcon('low', infoOutline: false);
   }
 
   Icon _getNotesIconLeg(Leg leg) {
     if (_noteOfSeverityLeg(leg, 'high')) return getNoteIcon('high');
     if (_noteOfSeverityLeg(leg, 'normal')) return getNoteIcon('normal');
-    return getNoteIcon('low');
+    return getNoteIcon('low', infoOutline: false);
   }
 
   bool _isValidTrip(Trip trip) {

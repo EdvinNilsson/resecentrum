@@ -46,7 +46,6 @@ class DepartureBoardWidget extends StatelessWidget {
                             } on DisplayableError catch (e) {
                               noLocationFound(context, onlyStops: true, description: e.description ?? e.message);
                             }
-                            _stopInput.text = currentLocation.getName();
                           },
                           icon: const Icon(Icons.my_location)))
                 ])),

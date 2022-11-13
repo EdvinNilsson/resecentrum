@@ -70,7 +70,7 @@ extension TimeExt on DateTime {
     return DateTime(year, month, day);
   }
 
-  DateTime startONextDay() {
+  DateTime startOfNextDay() {
     return DateTime(year, month, day + 1);
   }
 

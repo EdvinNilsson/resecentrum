@@ -222,11 +222,11 @@ Widget accessibilityIcon(String? accessibility, DateTime? rtDateTime, {EdgeInset
         ? Container(margin: margin, child: const Icon(Icons.not_accessible))
         : Container();
 
-Icon getNoteIcon(String severity) {
+Icon getNoteIcon(String severity, {bool infoOutline = true}) {
   switch (severity) {
     case 'slight':
     case 'low':
-      return const Icon(Icons.info_outline);
+      return Icon(infoOutline ? Icons.info_outline : Icons.info);
     case 'severe':
     case 'high':
       return const Icon(Icons.warning, color: Colors.red);
@@ -779,15 +779,6 @@ LatLngBounds? minBounds(LatLngBounds? a, b) {
 
 String addLineIfNotEmpty(String text) => text.isEmpty ? text : '\n$text';
 
-Color darken(Color color, double amount) {
-  assert(amount >= 0 && amount <= 1);
-
-  final hsl = HSLColor.fromColor(color);
-  final hslDark = hsl.withLightness((hsl.lightness - amount).clamp(0.0, 1.0));
-
-  return hslDark.toColor();
-}
-
 Future<Position> getPosition() async {
   bool serviceEnabled;
   LocationPermission permission;
@@ -961,6 +952,18 @@ void setTrainInfo(Iterable<TrainAnnouncement> trainJourney, List<Stop> stops, Li
     if (!(next?.advertisedTimeAtLocation.isAtSameMomentAs(stops[stop].depDateTime ?? stops[stop].arrDateTime!) ??
         true)) {
       stop++;
+    }
+  }
+
+  var lastReport = trainJourney.lastWhereOrNull((t) => t.timeAtLocation != null);
+  if (lastReport != null) {
+    var lastStopIndex = stops.indexWhere((s) =>
+        (lastReport.activityType == 'Ankomst' ? s.arrDateTime : s.depDateTime)
+            ?.isAtSameMomentAs(lastReport.advertisedTimeAtLocation) ??
+        false);
+    for (int i = 0; i < lastStopIndex; i++) {
+      stops[i].rtArrTime = null;
+      stops[i].rtDepTime = null;
     }
   }
 }

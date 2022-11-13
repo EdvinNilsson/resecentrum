@@ -51,7 +51,8 @@ void removeFavoriteLocation(Location location, {bool callOnChange = true}) {
 }
 
 bool isLocationFavorite(Location location) {
-  return favoriteLocationsBox.containsKey(_term(location.name));
+  String term = _term(location.name);
+  return favoriteLocationsBox.containsKey(term) && favoriteLocationsBox.get(term).runtimeType == location.runtimeType;
 }
 
 Iterable<Location> get allFavoriteLocations {
