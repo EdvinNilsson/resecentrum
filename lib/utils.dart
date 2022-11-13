@@ -126,7 +126,10 @@ Widget stopRowFromStop(Stop stop,
         (stop.depDateTime != stop.arrDateTime ||
             ((stop.depCancelled != stop.arrCancelled || stop.arrState.state != stop.depState.state) &&
                 !alightingOnly &&
-                !boardingOnly))) {
+                !boardingOnly) ||
+            (stop.rtDepTime != null &&
+                stop.rtArrTime != null &&
+                stop.rtDepTime!.difference(stop.rtArrTime!) > const Duration(minutes: 1)))) {
       addTimeText(stop.arrDateTime!, stop.rtArrTime, stop.arrCancelled, stop.arrState.state);
       textSpans.add(const TextSpan(text: '\n'));
       addTimeText(stop.depDateTime!, stop.rtDepTime, stop.depCancelled, stop.depState.state);
