@@ -395,8 +395,9 @@ Future<void> _addTrainInfo(List<Departure> result, DepartureBoardOptions departu
 
     List<TrainAnnouncement> lateTrainActivities = [];
 
+    Future<Iterable<Departure>?>? lateDepartureBoardRequest;
     if (lateDepartures.isNotEmpty) {
-      var lateDepartureBoard = await reseplaneraren
+      lateDepartureBoardRequest = reseplaneraren
           .getDepartureBoard(stopId,
               dateTime: lateDepartures.first.advertisedTimeAtLocation,
               timeSpan: lateDepartures.last.advertisedTimeAtLocation
@@ -407,27 +408,11 @@ Future<void> _addTrainInfo(List<Departure> result, DepartureBoardOptions departu
               useTram: false,
               useBoat: false)
           .suppress();
-
-      if (lateDepartureBoard != null) {
-        for (TrainAnnouncement lateDeparture in lateDepartures) {
-          var missingDeparture = lateDepartureBoard.firstWhereOrNull((d) =>
-              d.journeyNumber == lateDeparture.advertisedTrainIdent &&
-              d.dateTime.isAtSameMomentAs(lateDeparture.advertisedTimeAtLocation) &&
-              isTrainType(d.type));
-          if (missingDeparture != null &&
-              !result.any((d) =>
-                  d.journeyNumber == lateDeparture.advertisedTrainIdent &&
-                  d.dateTime.isAtSameMomentAs(lateDeparture.advertisedTimeAtLocation) &&
-                  isTrainType(d.type))) {
-            result.add(missingDeparture);
-            lateTrainActivities.add(lateDeparture);
-          }
-        }
-      }
     }
 
+    Future<Iterable<Departure>?>? lateArrivalBoardRequest;
     if (lateArrivals.isNotEmpty && departureBoardOptions.includeArrivals && direction == null) {
-      var lateArrivalBoard = await reseplaneraren
+      lateArrivalBoardRequest = reseplaneraren
           .getArrivalBoard(stopId,
               dateTime: lateArrivals.first.advertisedTimeAtLocation,
               timeSpan: lateArrivals.last.advertisedTimeAtLocation
@@ -437,21 +422,37 @@ Future<void> _addTrainInfo(List<Departure> result, DepartureBoardOptions departu
               useTram: false,
               useBoat: false)
           .suppress();
+    }
 
-      if (lateArrivalBoard != null) {
-        for (TrainAnnouncement lateArrival in lateArrivals) {
-          var missingArrival = lateArrivalBoard.firstWhereOrNull((d) =>
-              d.journeyNumber == lateArrival.advertisedTrainIdent &&
-              d.dateTime.isAtSameMomentAs(lateArrival.advertisedTimeAtLocation) &&
-              isTrainType(d.type));
-          if (missingArrival != null &&
-              !result.any((d) =>
-                  d.journeyNumber == lateArrival.advertisedTrainIdent &&
-                  d.dateTime.isAtSameMomentAs(lateArrival.advertisedTimeAtLocation) &&
-                  isTrainType(d.type))) {
-            result.add(missingArrival);
-            lateTrainActivities.add(lateArrival);
-          }
+    var lateDepartureBoard = await lateDepartureBoardRequest;
+    if (lateDepartureBoard != null) {
+      for (TrainAnnouncement lateDeparture in lateDepartures) {
+        var missingDeparture = lateDepartureBoard.firstWhereOrNull((d) =>
+            d.journeyNumber == lateDeparture.advertisedTrainIdent &&
+            d.dateTime.isAtSameMomentAs(lateDeparture.advertisedTimeAtLocation) &&
+            isTrainType(d.type));
+        if (missingDeparture != null &&
+            !result.any((d) =>
+                d.journeyNumber == lateDeparture.advertisedTrainIdent &&
+                d.dateTime.isAtSameMomentAs(lateDeparture.advertisedTimeAtLocation) &&
+                isTrainType(d.type))) {
+          result.add(missingDeparture);
+          lateTrainActivities.add(lateDeparture);
+        }
+      }
+    }
+
+    var lateArrivalBoard = await lateArrivalBoardRequest;
+    if (lateArrivalBoard != null) {
+      for (TrainAnnouncement lateArrival in lateArrivals) {
+        var missingArrival = lateArrivalBoard.firstWhereOrNull((a) =>
+            a.journeyNumber == lateArrival.advertisedTrainIdent &&
+            a.dateTime.isAtSameMomentAs(lateArrival.advertisedTimeAtLocation) &&
+            isTrainType(a.type));
+        if (missingArrival != null &&
+            !result.any((d) => d.journeyNumber == lateArrival.advertisedTrainIdent && isTrainType(d.type))) {
+          result.add(missingArrival);
+          lateTrainActivities.add(lateArrival);
         }
       }
     }
