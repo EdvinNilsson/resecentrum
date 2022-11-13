@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 
 import 'favorites.dart';
 import 'home_widget.dart';
@@ -19,6 +20,7 @@ late Box<Location> favoriteLocationsBox;
 
 bool supportShortcuts = false;
 bool useEdgeToEdge = true;
+bool supportVttogo = false;
 
 int? androidSdkVersion;
 
@@ -35,6 +37,7 @@ void main() async {
   tripBox = await Hive.openBox('trip');
   departureBoardBox = await Hive.openBox('departureBoard');
   favoriteLocationsBox = await Hive.openBox('favoriteLocations');
+  supportVttogo = await canLaunchUrlString('vttogo://s/');
   if (!kIsWeb && Platform.isAndroid) {
     androidSdkVersion = await androidSdk();
     if (androidSdkVersion != null) {

@@ -43,18 +43,30 @@ class TripResultWidget extends StatelessWidget {
                 builder: (context, snapshot) {
                   return tripTitle(_from.getName(), _to.getName(), via: _tripOptions.via?.name);
                 }),
-            actions: supportShortcuts
+            actions: supportShortcuts || supportVttogo
                 ? <Widget>[
                     PopupMenuButton(
-                        onSelected: (_) => _createShortcut(context),
+                        onSelected: (selection) async {
+                          if (selection == 0) _createShortcut(context);
+                          if (selection == 1) buyTicket(context, await _getStopId(_from), await _getStopId(_to));
+                        },
                         itemBuilder: (BuildContext context) => [
-                              const PopupMenuItem(
-                                value: 0,
-                                child: ListTile(
-                                    leading: Icon(Icons.add_to_home_screen),
-                                    title: Text('Skapa genväg'),
-                                    visualDensity: VisualDensity.compact),
-                              )
+                              if (supportShortcuts)
+                                const PopupMenuItem(
+                                  value: 0,
+                                  child: ListTile(
+                                      leading: Icon(Icons.add_to_home_screen),
+                                      title: Text('Skapa genväg'),
+                                      visualDensity: VisualDensity.compact),
+                                ),
+                              if (supportVttogo)
+                                const PopupMenuItem(
+                                  value: 1,
+                                  child: ListTile(
+                                      leading: Icon(Icons.confirmation_num),
+                                      title: Text('Köp enkelbiljett'),
+                                      visualDensity: VisualDensity.compact),
+                                )
                             ])
                   ]
                 : null),
@@ -530,6 +542,15 @@ class TripResultWidget extends StatelessWidget {
     var label = _from is CurrentLocation ? _to.name.firstPart() : '${_from.name.firstPart()}–${_to.name.firstPart()}';
 
     createShortcut(context, uri.toString(), label, 'trip', _tripOptions.summary);
+  }
+
+  Future<int> _getStopId(Location location) async {
+    if (location is CurrentLocation) {
+      return (await location.location(onlyStops: true) as StopLocation).id;
+    } else if (location is CoordLocation) {
+      return (await getLocationFromCoord(location.lat, location.lon, onlyStops: true) as StopLocation).id;
+    }
+    return (location as StopLocation).id;
   }
 }
 

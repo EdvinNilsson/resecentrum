@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:resecentrum/main.dart';
 
 import 'extensions.dart';
 import 'journey_detail_widget.dart';
@@ -77,6 +78,19 @@ class TripDetailWidget extends StatelessWidget {
         appBar: AppBar(
           title: tripTitle(_trip.leg.first.origin.name, _trip.leg.last.destination.name),
           actions: [
+            if (supportVttogo)
+              PopupMenuButton(
+                  onSelected: (_) => buyTicket(context, _trip.leg.firstWhere((l) => l.type != 'WALK').origin.id!,
+                      _trip.leg.lastWhere((l) => l.type != 'WALK').destination.id!),
+                  itemBuilder: (BuildContext context) => [
+                        const PopupMenuItem(
+                          value: 0,
+                          child: ListTile(
+                              leading: Icon(Icons.confirmation_num),
+                              title: Text('Köp enkelbiljett'),
+                              visualDensity: VisualDensity.compact),
+                        )
+                      ]),
             IconButton(
                 onPressed: () {
                   Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {

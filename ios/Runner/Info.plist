@@ -43,5 +43,9 @@
 	<false/>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>The app uses your location to search trips from your current location, find nearby stops and show your location on the map.</string>
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+		<string>vttogo</string>
+    </array>
 </dict>
 </plist>

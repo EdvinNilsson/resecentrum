@@ -4,6 +4,14 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="vttogo" />
+        </intent>
+    </queries>
+
    <application
         android:label="Resecentrum"
         android:icon="@mipmap/ic_launcher">

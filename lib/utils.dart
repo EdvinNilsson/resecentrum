@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:maplibre_gl/mapbox_gl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/platform_interface.dart';
 
 import 'extensions.dart';
@@ -250,6 +251,12 @@ String? getHighestPriority(String? a, String? b) {
 var _toGoPattern = RegExp(r'appen (västtrafik|) ?to ?go', multiLine: true, caseSensitive: false);
 
 String? removeToGoMentions(String? text) => text?.replaceAll(_toGoPattern, 'appen');
+
+void buyTicket(BuildContext context, int from, int to) async {
+  var uri = Uri.parse('vttogo://s/?f=$from&t=$to');
+  if (await launchUrl(uri)) return;
+  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kunde inte öppna appen Västtrafik To Go')));
+}
 
 abstract class TS {
   Widget display(BuildContext context, {bool boldTitle = false, bool showAffectedStop = false});
