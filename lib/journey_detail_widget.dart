@@ -139,8 +139,8 @@ Future<JourneyDetailWithTrafficSituations> getJourneyDetail(
     String journeyDetailRef, String journeyId, int? journeyNumber, String type, int evaId, DateTime evaDateTime) async {
   var response = reseplaneraren.getJourneyDetail(journeyDetailRef);
 
-  Future<void>? cancelledStops;
-  if (!isTrainType(type)) cancelledStops = reseplaneraren.setCancelledStops(evaDateTime, evaId, response);
+  Future<void>? mgateExtra;
+  if (!isTrainType(type)) mgateExtra = reseplaneraren.setMgateExtra(evaDateTime, evaId, response);
 
   var journeyTs = reseplaneraren.getTrafficSituationsByJourneyId(journeyId).suppress();
   var lineTs = reseplaneraren.getTrafficSituationsByLineId(lineIdFromJourneyId(journeyId)).suppress();
@@ -309,7 +309,7 @@ Future<JourneyDetailWithTrafficSituations> getJourneyDetail(
     }
   }
 
-  await cancelledStops;
+  await mgateExtra;
 
   return JourneyDetailWithTrafficSituations(journeyDetail, severeTs.toSet(), normalTs.toSet(),
       stopNoteIcons.map((s) => s != null ? getNoteIcon(s) : null), deviation);

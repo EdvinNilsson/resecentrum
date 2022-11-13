@@ -580,12 +580,13 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     _stops.addAll(stops.map((stop) => MapFocusable(stop, focus)));
 
     for (var stop in stops) {
+      var color = getValueAtRouteIdx(journeyDetail.journeyColor, stop.routeIdx);
       _lineStopsGeoJson['features'].add({
         'type': 'Feature',
         'id': stop.id.toString(),
         'properties': {
-          'fgColor': journeyDetail.fgColor.toHexCode(),
-          'bgColor': journeyDetail.bgColor.toHexCode(),
+          'fgColor': color.fg.toHexCode(),
+          'bgColor': color.bg.toHexCode(),
         },
         'geometry': {
           'type': 'Point',
@@ -682,11 +683,11 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
         } else {
           var journeyDetail = _journeyDetailById[vehiclePosition.journeyId]!;
 
-          var fgColor = journeyDetail.fgColor;
-          var bgColor = journeyDetail.bgColor;
+          var color = getValueAtRouteIdxWithJid(
+              journeyDetail.journeyColor, 0, vehiclePosition.journeyId, journeyDetail.journeyId);
           var type = journeyDetail.journeyType.first.type;
 
-          _vehicles.add(Vehicle(vehiclePosition.journeyId, outdated, vehiclePosition, type, bgColor, fgColor));
+          _vehicles.add(Vehicle(vehiclePosition.journeyId, outdated, vehiclePosition, type, color.bg, color.fg));
 
           await _mapController.setGeoJsonSource('vehicles', _getVehicleGeoJson(Duration.zero));
         }

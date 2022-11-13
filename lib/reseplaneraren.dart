@@ -357,8 +357,7 @@ class Reseplaneraren {
     }, altDio: _tsDio);
   }
 
-  Future<void> setCancelledStops(
-      DateTime evaDateTime, int evaStopId, Future<JourneyDetail?> journeyDetailFuture) async {
+  Future<void> setMgateExtra(DateTime evaDateTime, int evaStopId, Future<JourneyDetail?> journeyDetailFuture) async {
     try {
       int extId = evaStopId % 1000000000 - evaStopId % 1000;
       String date = DateFormat('yyyyMMdd').format(evaDateTime);
@@ -370,7 +369,7 @@ class Reseplaneraren {
         'ver': '1.54',
         'lang': 'swe',
         'auth': {'type': 'AID', 'aid': 'webwf4h674678g4fh'},
-        'client': {'type': 'WEB'},
+        'client': {'id': 'VASTTRAFIK', 'type': 'WEB'},
         'svcReqL': [
           {
             'req': {
@@ -407,8 +406,11 @@ class Reseplaneraren {
           .mapIndexed((j, i) => i >= 0 ? stationBoard.data['svcResL'][j]['res']['jnyL'][i] : null)
           .where((j) => j != null);
 
-      if (!journeys.any((j) => (j['isCncl'] ?? false) || (j['isPartCncl'] ?? false)) &&
-          !anyStopWithoutRtInfo(journeyDetail.stop)) return;
+      bool lineChange = journeyDetail.journeyName.any((j) => j.name != journeyDetail.journeyName.last.name);
+
+      if (!(journeys.any((j) => (j['isCncl'] ?? false) || (j['isPartCncl'] ?? false)) ||
+          anyStopWithoutRtInfo(journeyDetail.stop) ||
+          lineChange)) return;
 
       var journeyDetails = await _mgateDio.post('/', queryParameters: {
         'rnd': DateTime.now().millisecondsSinceEpoch
@@ -416,7 +418,7 @@ class Reseplaneraren {
         'ver': '1.54',
         'lang': 'swe',
         'auth': {'type': 'AID', 'aid': 'webwf4h674678g4fh'},
-        'client': {'type': 'WEB'},
+        'client': {'id': 'VASTTRAFIK', 'type': 'WEB'},
         'svcReqL': [
           {
             'req': {'jid': journeys.first['jid'], 'getPolyline': false},
@@ -436,6 +438,25 @@ class Reseplaneraren {
       }
 
       journeyDetail.stop = stops;
+
+      if (lineChange) {
+        var icoL = journeyDetails.data['svcResL'][0]['res']['common']['icoL'];
+        var lineIcons = icoL.where((i) => i['txt'] != journeyDetail.journeyName.last.name && i.containsKey('bg'));
+        List<JourneyColor> journeyColor = [];
+
+        for (var icon in lineIcons) {
+          var bg = Color.fromRGBO(icon['bg']['r'], icon['bg']['g'], icon['bg']['b'], 1);
+          var fg = Color.fromRGBO(icon['fg']['r'], icon['fg']['g'], icon['fg']['b'], 1);
+          var jc = JourneyColor(bg, fg, journeyDetail.journeyName.firstWhere((j) => j.name == icon['txt']).routeIdxFrom,
+              journeyDetail.journeyName.lastWhere((j) => j.name == icon['txt']).routeIdxTo);
+          journeyColor.add(jc);
+        }
+
+        var oldJc = journeyDetail.journeyColor.first;
+        journeyColor.add(JourneyColor(oldJc.bg, oldJc.fg, journeyColor.last.routeIdxTo, oldJc.routeIdxTo));
+
+        journeyDetail.journeyColor = journeyColor;
+      }
     } catch (e) {
       if (kDebugMode) print(e);
     }
@@ -670,9 +691,8 @@ class JourneyDetail {
   late Iterable<Stop> stop;
   late Iterable<JourneyName> journeyName;
   late String geometryRef;
-  late Color fgColor;
-  late Color bgColor;
   late String stroke;
+  late Iterable<JourneyColor> journeyColor;
 
   JourneyDetail(dynamic data) {
     journeyType = forceList(data['JourneyType']).map((jt) => JourneyType(jt));
@@ -683,9 +703,10 @@ class JourneyDetail {
     stop = forceList(data['Stop']).map((s) => Stop(s));
     journeyName = forceList(data['JourneyName']).map((jt) => JourneyName(jt));
     geometryRef = data['GeometryRef']['ref'];
-    fgColor = fromHex(data['Color']['fgColor']);
-    bgColor = fromHex(data['Color']['bgColor']);
     stroke = data['Color']['stroke'];
+    var fgColor = fromHex(data['Color']['fgColor']);
+    var bgColor = fromHex(data['Color']['bgColor']);
+    journeyColor = [JourneyColor(bgColor, fgColor, 0, journeyName.last.routeIdxTo)];
   }
 }
 
@@ -763,6 +784,14 @@ class JourneyName extends RouteIdx {
   JourneyName(dynamic data) : super(data) {
     name = data['name'];
   }
+}
+
+class JourneyColor extends RouteIdx {
+  Color bg;
+  Color fg;
+
+  JourneyColor(this.bg, this.fg, int from, int to)
+      : super({'routeIdxFrom': from.toString(), 'routeIdxTo': to.toString()});
 }
 
 class Direction extends RouteIdx {

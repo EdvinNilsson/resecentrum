@@ -965,9 +965,7 @@ void setTrainInfo(Iterable<TrainAnnouncement> trainJourney, List<Stop> stops, Li
 Future<JourneyDetail?> getJourneyDetailExtra(JourneyDetailRef ref) async {
   var response = reseplaneraren.getJourneyDetail(ref.ref);
 
-  if (!isTrainType(ref.type)) {
-    await reseplaneraren.setCancelledStops(ref.evaDateTime, ref.evaId, response);
-  }
+  if (!isTrainType(ref.type)) await reseplaneraren.setMgateExtra(ref.evaDateTime, ref.evaId, response);
 
   var journeyDetail = await response;
 
