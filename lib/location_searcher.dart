@@ -36,9 +36,8 @@ class LocationSearcherWidget extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
           title: Theme(
-              data: Theme.of(context).copyWith(
-                  textSelectionTheme:
-                      TextSelectionThemeData(selectionColor: darken(Theme.of(context).primaryColor, 0.1))),
+              data: Theme.of(context)
+                  .copyWith(textSelectionTheme: const TextSelectionThemeData(selectionColor: Colors.black26)),
               child: TextField(
                 controller: _textController,
                 onChanged: _onChanged,

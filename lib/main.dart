@@ -93,6 +93,7 @@ class MyApp extends StatelessWidget {
             backgroundColor: primaryColor,
           ),
           colorScheme: const ColorScheme.dark().copyWith(primary: primaryColor, secondary: primaryColor),
+          textSelectionTheme: const TextSelectionThemeData(selectionHandleColor: Color(0xff015a85)),
         ),
         home: const Home(),
       ),
