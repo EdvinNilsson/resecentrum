@@ -110,3 +110,26 @@ extension FutureExt<T> on Future<T> {
     return then((value) => Future<T?>.value(value)).catchError((_) => null);
   }
 }
+
+extension LatLngBoundsExt on LatLngBounds {
+  LatLngBounds pad(double bufferRatio) {
+    var heightBuffer = (southwest.latitude - northeast.latitude).abs() * bufferRatio;
+    var widthBuffer = (southwest.longitude - northeast.longitude).abs() * bufferRatio;
+
+    return LatLngBounds(
+        southwest: LatLng(southwest.latitude - heightBuffer, southwest.longitude - widthBuffer),
+        northeast: LatLng(northeast.latitude + heightBuffer, northeast.longitude + widthBuffer));
+  }
+
+  LatLngBounds minSize(double minSize) {
+    var heightBuffer = (southwest.latitude - northeast.latitude).abs();
+    var widthBuffer = (southwest.longitude - northeast.longitude).abs();
+
+    heightBuffer = heightBuffer < minSize ? (minSize - heightBuffer) / 2 : 0;
+    widthBuffer = widthBuffer < minSize ? (minSize - widthBuffer) / 2 : 0;
+
+    return LatLngBounds(
+        southwest: LatLng(southwest.latitude - heightBuffer, southwest.longitude - widthBuffer),
+        northeast: LatLng(northeast.latitude + heightBuffer, northeast.longitude + widthBuffer));
+  }
+}

@@ -137,7 +137,7 @@ class TripDetailWidget extends StatelessWidget {
           ? MapJourney(walk: true, geometry: l.cachedGeometry, geometryRef: l.geometryRef)
           : MapJourney(
               journeyDetailRef: JourneyDetailRef.fromLeg(l),
-              journeyPart: IdxJourneyPart(l.origin.routeIdx!, l.destination.routeIdx!)))
+              journeyPart: JourneyPart(l.origin.routeIdx!, l.destination.routeIdx!)))
       .toList(growable: false);
 
   Widget _legCard(Leg leg, int i, BuildContext context, double bgLuminance) {
@@ -339,13 +339,11 @@ class TripDetailWidget extends StatelessWidget {
     if (geometry == null) return null;
     double distance = 0;
     Point? previous;
-    for (var line in geometry) {
-      for (var point in line) {
-        if (previous != null) {
-          distance += Geolocator.distanceBetween(previous.lat, previous.lon, point.lat, point.lon);
-        }
-        previous = point;
+    for (var point in geometry) {
+      if (previous != null) {
+        distance += Geolocator.distanceBetween(previous.lat, previous.lon, point.lat, point.lon);
       }
+      previous = point;
     }
     int i = _trip.leg.indexOf(leg);
     Leg? after = _trip.leg.tryElementAt(i + 1);

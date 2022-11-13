@@ -763,29 +763,15 @@ LatLngBounds? fromPoints(Iterable<LatLng> points) {
   return LatLngBounds(southwest: LatLng(minY!, minX!), northeast: LatLng(maxY!, maxX!));
 }
 
-LatLngBounds? pad(LatLngBounds? bounds, double bufferRatio) {
-  if (bounds == null) return null;
-
-  var heightBuffer = (bounds.southwest.latitude - bounds.northeast.latitude).abs() * bufferRatio;
-  var widthBuffer = (bounds.southwest.longitude - bounds.northeast.longitude).abs() * bufferRatio;
+LatLngBounds? minBounds(LatLngBounds? a, b) {
+  if (a == null) return b;
+  if (b == null) return a;
 
   return LatLngBounds(
-      southwest: LatLng(bounds.southwest.latitude - heightBuffer, bounds.southwest.longitude - widthBuffer),
-      northeast: LatLng(bounds.northeast.latitude + heightBuffer, bounds.northeast.longitude + widthBuffer));
-}
-
-LatLngBounds? minSize(LatLngBounds? bounds, double minSize) {
-  if (bounds == null) return null;
-
-  var heightBuffer = (bounds.southwest.latitude - bounds.northeast.latitude).abs();
-  var widthBuffer = (bounds.southwest.longitude - bounds.northeast.longitude).abs();
-
-  heightBuffer = heightBuffer < minSize ? (minSize - heightBuffer) / 2 : 0;
-  widthBuffer = widthBuffer < minSize ? (minSize - widthBuffer) / 2 : 0;
-
-  return LatLngBounds(
-      southwest: LatLng(bounds.southwest.latitude - heightBuffer, bounds.southwest.longitude - widthBuffer),
-      northeast: LatLng(bounds.northeast.latitude + heightBuffer, bounds.northeast.longitude + widthBuffer));
+      southwest:
+          LatLng(max(a.southwest.latitude, b.southwest.latitude), max(a.southwest.longitude, b.southwest.longitude)),
+      northeast:
+          LatLng(min(a.northeast.latitude, b.northeast.latitude), min(a.northeast.longitude, b.northeast.longitude)));
 }
 
 String addLineIfNotEmpty(String text) => text.isEmpty ? text : '\n$text';

@@ -158,8 +158,7 @@ class TripResultWidget extends StatelessWidget {
                                                 walk: true, geometry: l.cachedGeometry, geometryRef: l.geometryRef!)
                                             : MapJourney(
                                                 journeyDetailRef: JourneyDetailRef.fromLeg(l),
-                                                journeyPart:
-                                                    IdxJourneyPart(l.origin.routeIdx!, l.destination.routeIdx!)))
+                                                journeyPart: JourneyPart(l.origin.routeIdx!, l.destination.routeIdx!)))
                                         .toList(growable: false));
                                   }));
                                 },

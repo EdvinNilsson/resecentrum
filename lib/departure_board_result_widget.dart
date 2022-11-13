@@ -121,7 +121,12 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
                       }, onLongPress: (context, departure) {
                         Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
                           _timer?.cancel();
-                          return MapWidget([MapJourney(journeyDetailRef: JourneyDetailRef.fromDeparture(departure))]);
+                          return MapWidget([
+                            MapJourney(
+                                journeyDetailRef: JourneyDetailRef.fromDeparture(departure),
+                                refStopId: departure.stopId,
+                                focusJid: departure.journeyId)
+                          ]);
                         })).then((_) => _initTimer());
                       }),
                       bottom: false,

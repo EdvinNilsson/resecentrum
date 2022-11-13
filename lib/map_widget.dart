@@ -52,6 +52,10 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   Timer? _timer;
   Ticker? _ticker;
 
+  static CameraPosition? _lastPosition;
+
+  Future<Iterable<VehiclePosition>?>? _initialVehiclePosition;
+
   final LatLngBounds _mapBounds =
       LatLngBounds(southwest: const LatLng(55.02652, 10.54138), northeast: const LatLng(69.06643, 24.22472));
 
@@ -59,17 +63,22 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance!.addObserver(this);
+    var focusJourneyIds = widget._mapJourneys.map((j) => j.focusJid).whereNotNull();
+    if (focusJourneyIds.isNotEmpty) {
+      _initialVehiclePosition = vehiclePositionsService.getPositions(focusJourneyIds.toList(growable: false));
+    }
   }
 
   @override
   void didChangeDependencies() {
-    devicePixelRatio = (!kIsWeb ? MediaQuery.of(context).devicePixelRatio : 1);
+    devicePixelRatio = !kIsWeb ? MediaQuery.of(context).devicePixelRatio : 1;
     primaryColor = Theme.of(context).primaryColor;
     super.didChangeDependencies();
   }
 
   @override
   void dispose() {
+    if (widget._mapJourneys.isEmpty) _lastPosition = _mapController.cameraPosition;
     WidgetsBinding.instance!.removeObserver(this);
     _timer?.cancel();
     _ticker?.stop();
@@ -97,7 +106,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
       onMapCreated: _onMapCreated,
       onCameraIdle: widget._mapJourneys.isEmpty ? _onCameraIdle : null,
       trackCameraPosition: widget._mapJourneys.isEmpty,
-      initialCameraPosition:
+      initialCameraPosition: (widget._mapJourneys.isEmpty ? _lastPosition : null) ??
           CameraPosition(target: const LatLng(57.70, 11.97), zoom: widget._mapJourneys.isEmpty ? 13 : 11),
       cameraTargetBounds: CameraTargetBounds(_mapBounds),
       onStyleLoadedCallback: _onStyleLoadedCallback,
@@ -116,16 +125,6 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   }
 
   void _onStyleLoadedCallback() async {
-    for (var mapJourney in widget._mapJourneys) {
-      if (mapJourney.journeyDetail != null) {
-        _addJourneyDetail(mapJourney.journeyDetail!, mapJourney.journeyPart, mapJourney.focus);
-      } else if (mapJourney.journeyDetailRef != null) {
-        _getJourneyDetailAndAdd(mapJourney.journeyDetailRef!, mapJourney.journeyPart, mapJourney.focus);
-      } else if (mapJourney.walk) {
-        _addWalk(mapJourney);
-      }
-    }
-
     _addImageFromAsset('bus', 'assets/bus.png', true);
     _addImageFromAsset('boat', 'assets/boat.png', true);
     _addImageFromAsset('tram', 'assets/tram.png', true);
@@ -138,16 +137,18 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     await _mapController.addGeoJsonSource('vehicles', _getVehicleGeoJson(Duration.zero));
 
     await _mapController.addLineLayer(
-      'walks',
-      'walks',
-      const LineLayerProperties(
-        lineColor: '#000000',
-        lineOpacity: 0.5,
-        lineWidth: 5,
-        lineBlur: 2,
-      ),
-      enableInteraction: false,
-    );
+        'walks',
+        'walks',
+        const LineLayerProperties(
+          lineColor: '#000000',
+          lineOpacity: 0.5,
+          lineWidth: 4,
+          lineDasharray: [
+            Expressions.literal,
+            [1, 1 / 2]
+          ],
+        ),
+        enableInteraction: false);
 
     await _mapController.addCircleLayer(
         'line-stops',
@@ -268,15 +269,51 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
       ),
     );
 
-    _initTimer();
+    var futures = <Future>[];
+    for (var mapJourney in widget._mapJourneys) {
+      if (mapJourney.journeyDetail != null) {
+        _addJourneyDetail(mapJourney.journeyDetail!, mapJourney.journeyPart, mapJourney.focus);
+      } else if (mapJourney.futureJourneyDetail != null) {
+        futures.add(mapJourney.futureJourneyDetail!.then((jd) {
+          if (jd != null) _addJourneyDetail(jd, mapJourney.journeyPart, mapJourney.focus);
+        }));
+      } else if (mapJourney.walk) {
+        _addWalk(mapJourney);
+      }
+    }
+
+    await Future.wait(futures);
+
+    var initialPosition = await _initialVehiclePosition;
+    _initTimer(initialPosition);
+
+    var refStops = widget._mapJourneys
+        .map((j) => j.refStopId)
+        .whereNotNull()
+        .map((stopId) => _journeyDetails.expand((jd) => jd.stop).firstWhere((stop) => stop.id == stopId))
+        .map((s) => LatLng(s.lat, s.lon));
+
+    var vehiclePos = _vehicles.map((v) => LatLng(v.position.lat, v.position.long));
+
+    LatLngBounds? bounds;
+
+    if (refStops.isNotEmpty && vehiclePos.isNotEmpty) {
+      bounds = minBounds(
+              fromPoints(vehiclePos.followedBy(refStops))?.pad(0.2), _getBounds(extraPoints: vehiclePos)?.pad(0.08))
+          ?.minSize(0.005);
+    } else {
+      bounds = _getBounds()?.pad(0.08).minSize(0.003);
+    }
+
+    if (bounds != null) _mapController.animateCamera(CameraUpdate.newLatLngBounds(bounds));
 
     _ticker = Ticker(_updateInterpolation);
     _ticker?.start();
   }
 
-  void _initTimer() {
+  Future<void> _initTimer([Iterable<VehiclePosition>? initialPosition]) async {
     _timer = Timer.periodic(const Duration(seconds: 1), _updatePosition);
-    _updatePosition(_timer!);
+    await _updatePosition(_timer!, initialPosition);
   }
 
   Future<void> _updateJourneyDetail(
@@ -284,7 +321,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     try {
       var response = await getJourneyDetail(departure.journeyDetailRef, departure.journeyId, departure.journeyNumber,
           departure.type, departure.stopId, departure.dateTime);
-      journeyDetail.element = response?.journeyDetail;
+      journeyDetail.element = response.journeyDetail;
       streamController.add(response);
     } catch (error) {
       streamController.addError(error);
@@ -309,7 +346,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   bool _initialLocation = true;
 
   void _onUserLocationUpdated(UserLocation location) async {
-    if (_initialLocation) {
+    if (_initialLocation && _lastPosition == null) {
       if (!location.position.inBounds(_mapBounds)) return;
       _initialLocation = false;
       await _mapController.animateCamera(CameraUpdate.newLatLng(location.position));
@@ -360,8 +397,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
                       builder: (context, snapshot) {
                         var vehiclePosition = snapshot.data ?? vehicle.position;
                         return Column(children: [
-                          Text('Senast uppdaterad:'
-                              '${DateFormat.MMMMEEEEd().add_Hms().format(vehiclePosition.updatedAt)}'),
+                          Text('Senast uppdaterad: ${DateFormat.Hms().format(vehiclePosition.updatedAt)}'),
                           Text('Hastighet: ${vehiclePosition.speed.round()} km/h'),
                         ]);
                       }),
@@ -425,32 +461,16 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   }
 
   void _addJourneyDetail(JourneyDetail journeyDetail, JourneyPart? journeyPart, bool focus) {
-    IdxJourneyPart? idxJourneyPart;
-    if (journeyPart != null) {
-      idxJourneyPart = journeyPart is FromStopIdJourneyPart
-          ? IdxJourneyPart(journeyDetail.stop.firstWhere((stop) => stop.id == journeyPart.stopId).routeIdx,
-              journeyDetail.stop.last.routeIdx)
-          : journeyPart as IdxJourneyPart;
-    }
-    _addStops(journeyDetail, idxJourneyPart, focus);
-    _addPolylines(journeyDetail, idxJourneyPart);
+    _addStops(journeyDetail, journeyPart, focus);
+    _addPolylines(journeyDetail, journeyPart);
     _journeyDetails.add(journeyDetail);
     for (var journey in journeyDetail.journeyId) {
       _journeyIds.add(journey.id);
       _journeyDetailById[journey.id] = journeyDetail;
     }
-
-    _updateBounds();
   }
 
-  void _updateBounds() {
-    if (_journeyDetails.length + _walks.length != widget._mapJourneys.length) return;
-    var bound = _getBounds();
-    if (bound == null) return;
-    _mapController.animateCamera(CameraUpdate.newLatLngBounds(bound));
-  }
-
-  LatLngBounds? _getBounds() {
+  LatLngBounds? _getBounds({Iterable<LatLng>? extraPoints}) {
     Iterable<LatLng> points;
     if (widget._mapJourneys.any((mapJourney) => mapJourney.focus) || widget.focusStops.isNotEmpty) {
       var focusStops =
@@ -463,70 +483,80 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
           .map((stop) => LatLng(stop.item.lat, stop.item.lon))
           .followedBy(_walks.map((walk) => [walk.item.start, walk.item.end]).expand((x) => x));
     }
-    LatLngBounds? bounds = fromPoints(points);
-    bounds = pad(bounds, 0.08);
-    bounds = minSize(bounds, 0.0015);
-    return bounds;
+    return fromPoints(points.followedBy(extraPoints ?? []));
   }
 
-  void _getJourneyDetailAndAdd(JourneyDetailRef ref, JourneyPart? journeyPart, bool focus) async {
+  Future<void> _getJourneyDetailAndAdd(JourneyDetailRef ref,
+      {JourneyPart? journeyPart, bool focus = false, int? fromStopId}) async {
     var journeyDetail = await getJourneyDetailExtra(ref);
     if (journeyDetail == null) return;
+    if (fromStopId != null) journeyPart = JourneyPart.fromStopId(fromStopId, journeyDetail);
     _addJourneyDetail(journeyDetail, journeyPart, focus);
   }
 
   void _addWalk(MapJourney mapJourney) async {
-    Iterable<Iterable<Point>>? geometry =
+    Iterable<Point>? geometry =
         mapJourney.geometry ?? await reseplaneraren.getGeometry(mapJourney.geometryRef!).suppress();
     if (geometry == null) return;
-    for (var polyline in geometry) {
-      _walksGeoJson['features'].add({
-        'type': 'Feature',
-        'geometry': {
-          'type': 'LineString',
-          'coordinates': polyline.map((p) => [p.lon, p.lat]).toList(growable: false),
-        }
-      });
-    }
+    _walksGeoJson['features'].add({
+      'type': 'Feature',
+      'geometry': {
+        'type': 'LineString',
+        'coordinates': geometry.map((p) => [p.lon, p.lat]).toList(growable: false),
+      }
+    });
+
     _mapController.setGeoJsonSource('walks', _walksGeoJson);
-    var start = geometry.first.first, end = geometry.last.last;
+    var start = geometry.first, end = geometry.last;
     _walks.add(MapFocusable(Walk(LatLng(start.lat, start.lon), LatLng(end.lat, end.lon)), mapJourney.focus));
-    _updateBounds();
   }
 
-  void _addPolylines(JourneyDetail journeyDetail, IdxJourneyPart? journeyPart) async {
-    Iterable<Iterable<Point>>? geometry = await reseplaneraren.getGeometry(journeyDetail.geometryRef).suppress();
+  void _addPolylines(JourneyDetail journeyDetail, JourneyPart? journeyPart) async {
+    Iterable<Point>? geometry = await reseplaneraren.getGeometry(journeyDetail.geometryRef).suppress();
     if (geometry == null) return;
 
-    if (journeyPart != null) {
-      Stop firstStop = journeyDetail.stop.firstWhere((stop) => stop.routeIdx == journeyPart.fromIdx);
-      Stop lastStop = journeyDetail.stop.lastWhere((stop) => stop.routeIdx == journeyPart.toIdx);
-
-      for (var points in geometry) {
-        bool draw = false;
-        List<LatLng> pointsList = [];
-        for (var point in points) {
-          if (point.lon == firstStop.lon && point.lat == firstStop.lat) {
-            if (draw) pointsList.clear();
-            draw = true;
-          }
-
-          if (draw) pointsList.add(LatLng(point.lat, point.lon));
-
-          if (draw && point.lon == lastStop.lon && point.lat == lastStop.lat) break;
-        }
-
-        _addLine(pointsList, journeyDetail.fgColor, journeyDetail.bgColor);
+    if (journeyDetail.journeyColor.length > 1) {
+      for (var part in journeyDetail.journeyColor) {
+        var line = getJourneyPart(
+            journeyDetail,
+            JourneyPart(math.max(part.routeIdxFrom, journeyPart?.fromIdx ?? 0),
+                math.min(part.routeIdxTo, journeyPart?.toIdx ?? part.routeIdxTo)),
+            geometry);
+        _addLine(line, part.fg, part.bg);
       }
+    } else if (journeyPart != null) {
+      var line = getJourneyPart(journeyDetail, journeyPart, geometry);
+      _addLine(line, journeyDetail.journeyColor.first.fg, journeyDetail.journeyColor.first.bg);
     } else {
-      for (var points in geometry) {
-        var line = points.map((p) => LatLng(p.lat, p.lon)).toList();
-        _addLine(line, journeyDetail.fgColor, journeyDetail.bgColor);
-      }
+      var line = geometry.map((p) => LatLng(p.lat, p.lon)).toList();
+      _addLine(line, journeyDetail.journeyColor.first.fg, journeyDetail.journeyColor.first.bg);
     }
+  }
+
+  List<LatLng> getJourneyPart(JourneyDetail journeyDetail, JourneyPart journeyPart, Iterable<Point> geometry) {
+    if (journeyPart.toIdx <= journeyPart.fromIdx) return [];
+
+    Stop firstStop = journeyDetail.stop.firstWhere((stop) => stop.routeIdx == journeyPart.fromIdx);
+    Stop lastStop = journeyDetail.stop.lastWhere((stop) => stop.routeIdx == journeyPart.toIdx);
+
+    bool draw = false;
+    List<LatLng> line = [];
+    for (var point in geometry) {
+      if (point.lon == firstStop.lon && point.lat == firstStop.lat) {
+        if (draw) line.clear();
+        draw = true;
+      }
+
+      if (draw) line.add(LatLng(point.lat, point.lon));
+
+      if (draw && point.lon == lastStop.lon && point.lat == lastStop.lat) break;
+    }
+
+    return line;
   }
 
   void _addLine(List<LatLng> points, Color fgColor, Color bgColor) {
+    if (points.isEmpty) return;
     _linesGeoJson['features'].add({
       'type': 'Feature',
       'properties': {
@@ -541,7 +571,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     _mapController.setGeoJsonSource('lines', _linesGeoJson);
   }
 
-  void _addStops(JourneyDetail journeyDetail, IdxJourneyPart? journeyPart, bool focus) {
+  void _addStops(JourneyDetail journeyDetail, JourneyPart? journeyPart, bool focus) {
     Iterable<Stop> stops = journeyPart == null
         ? journeyDetail.stop
         : journeyDetail.stop
@@ -629,10 +659,10 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     return diff > Duration(minutes: still ? 5 : 1);
   }
 
-  void _updatePosition(Timer timer) async {
+  Future<void> _updatePosition(Timer timer, [Iterable<VehiclePosition>? initialPosition]) async {
     if (_journeyDetails.isEmpty) return;
 
-    var response = await vehiclePositionsService.getPositions(_journeyIds);
+    var response = initialPosition ?? await vehiclePositionsService.getPositions(_journeyIds);
 
     if (!mounted) return;
 
@@ -891,32 +921,39 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   void _showDepartureOnMap(Departure departure, JourneyDetail? journeyDetail) {
     if (_journeyIds.contains(departure.journeyId)) return;
     if (journeyDetail != null) {
-      _addJourneyDetail(journeyDetail, FromStopIdJourneyPart(departure.stopId), false);
+      _addJourneyDetail(journeyDetail, JourneyPart.fromStopId(departure.stopId, journeyDetail), false);
     } else {
-      _getJourneyDetailAndAdd(
-          JourneyDetailRef.fromDeparture(departure), FromStopIdJourneyPart(departure.stopId), false);
+      _getJourneyDetailAndAdd(JourneyDetailRef.fromDeparture(departure), fromStopId: departure.stopId);
     }
   }
 }
 
 class MapJourney {
-  JourneyDetailRef? journeyDetailRef;
   JourneyDetail? journeyDetail;
   JourneyPart? journeyPart;
   String? geometryRef;
-  Iterable<Iterable<Point>>? geometry;
+  Iterable<Point>? geometry;
   late bool walk;
   bool focus;
+  int? refStopId;
+  String? focusJid;
+
+  Future<JourneyDetail?>? futureJourneyDetail;
 
   MapJourney(
-      {this.journeyDetailRef,
+      {JourneyDetailRef? journeyDetailRef,
       this.journeyDetail,
       this.journeyPart,
       this.geometryRef,
       this.geometry,
       bool? walk,
+      this.refStopId,
+      this.focusJid,
       this.focus = false}) {
     this.walk = walk ?? false;
+    if (journeyDetailRef != null) {
+      futureJourneyDetail = getJourneyDetailExtra(journeyDetailRef);
+    }
   }
 }
 
@@ -949,19 +986,16 @@ class JourneyDetailRef {
   }
 }
 
-abstract class JourneyPart {}
+class JourneyPart {
+  late int fromIdx;
+  late int toIdx;
 
-class IdxJourneyPart extends JourneyPart {
-  int fromIdx;
-  int toIdx;
+  JourneyPart(this.fromIdx, this.toIdx);
 
-  IdxJourneyPart(this.fromIdx, this.toIdx);
-}
-
-class FromStopIdJourneyPart extends JourneyPart {
-  int stopId;
-
-  FromStopIdJourneyPart(this.stopId);
+  JourneyPart.fromStopId(int stopId, JourneyDetail journeyDetail) {
+    fromIdx = journeyDetail.stop.firstWhere((stop) => stop.id == stopId).routeIdx;
+    toIdx = journeyDetail.stop.last.routeIdx;
+  }
 }
 
 class MapFocusable<T> {

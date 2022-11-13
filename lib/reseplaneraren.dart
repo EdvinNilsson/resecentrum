@@ -319,12 +319,12 @@ class Reseplaneraren {
     });
   }
 
-  Future<Iterable<Iterable<Point>>> getGeometry(String ref) async {
+  Future<Iterable<Point>> getGeometry(String ref) async {
     return await _callApi('/geometry', Uri.splitQueryString(ref.split('?').last), (result) {
       var data = result.data['Geometry'];
       checkHafasError(data);
-      var points = forceList(data['Points']);
-      return points.map<Iterable<Point>>((points) => points['Point'].map<Point>((point) => Point(point)).toList());
+      var points = data['Points']['Point'];
+      return points.map<Point>((point) => Point(point)).toList();
     });
   }
 
@@ -830,9 +830,9 @@ class Leg {
   late String? accessibility;
   late int? journeyNumber;
 
-  Iterable<Iterable<Point>>? cachedGeometry;
+  Iterable<Point>? cachedGeometry;
 
-  Future<Iterable<Iterable<Point>>?> geometry() async {
+  Future<Iterable<Point>?> geometry() async {
     if (geometryRef == null) return null;
     cachedGeometry ??= await reseplaneraren.getGeometry(geometryRef!).suppress();
     return cachedGeometry;
