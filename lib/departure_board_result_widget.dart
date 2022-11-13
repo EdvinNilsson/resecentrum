@@ -475,7 +475,7 @@ Future<void> _addTrainInfo(List<Departure> result, DepartureBoardOptions departu
     if (activity.deviation.contains('Spårändrat')) result[i].rtTrack = activity.trackAtLocation;
     result[i].cancelled |= activity.canceled;
 
-    if (activity.deviation.isNotEmpty) result[i].direction += ', ${activity.deviation.join(', ')}';
+    if (activity.deviation.isNotEmpty) result[i].deviation = activity.deviation;
 
     if (activity.timeAtLocation == null && (result[i].rtDateTime?.isBefore(DateTime.now()) ?? false)) {
       result[i].state = DepartureState.atStation;
@@ -524,16 +524,11 @@ Widget departureBoardList(Iterable<Departure> departures, double bgLuminance,
                                     const Icon(Icons.arrow_back, size: 18),
                                     const SizedBox(width: 5),
                                     Expanded(
-                                        child: highlightFirstPart(
-                                            isTrainType(departure.type)
-                                                ? 'Från ${[
-                                                    shortStationName(departure.origin!, useAcronyms: false)
-                                                  ].followedBy(departure.direction.split(',').skip(1)).join(',')}'
-                                                : departure.direction,
+                                        child: highlightFirstPart(departure.getDirection(showOrigin: true),
                                             overflow: TextOverflow.fade)),
                                   ],
                                 )
-                              : highlightFirstPart(departure.direction, overflow: TextOverflow.fade)),
+                              : highlightFirstPart(departure.getDirection(), overflow: TextOverflow.fade)),
                       const SizedBox(width: 10),
                       accessibilityIcon(departure.accessibility, departure.rtDateTime,
                           margin: EdgeInsets.fromLTRB(

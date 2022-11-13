@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math';
 
-import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 
 import 'departure_board_result_widget.dart';
@@ -32,7 +31,7 @@ class JourneyDetailWidget extends StatelessWidget {
       {Key? key})
       : super(key: key);
 
-  final StreamController<JourneyDetailWithTrafficSituations?> _streamController = StreamController();
+  final StreamController<JourneyDetailWithTrafficSituations> _streamController = StreamController.broadcast();
 
   Future<void> _handleRefresh() async => _updateJourneyDetail();
 
@@ -42,13 +41,26 @@ class JourneyDetailWidget extends StatelessWidget {
     var bgLuminance = Theme.of(context).primaryColor.computeLuminance();
     return Scaffold(
         appBar: AppBar(
-          title: Row(
-            children: [
-              lineIcon(sname, fgColor, bgColor, bgLuminance, type, name, journeyNumber, context),
-              const SizedBox(width: 12),
-              Expanded(child: highlightFirstPart(direction, overflow: TextOverflow.fade))
-            ],
-          ),
+          title: StreamBuilder<JourneyDetailWithTrafficSituations>(
+              stream: _streamController.stream,
+              builder: (context, snapshot) {
+                var journeyDetail = snapshot.data?.journeyDetail;
+                var direction = this.direction;
+                if (journeyDetail != null) {
+                  var idx = journeyDetail.stop.firstWhere((s) => s.id == evaId).routeIdx;
+                  direction =
+                      getValueAtRouteIdxWithJid(journeyDetail.direction, idx, journeyId, journeyDetail.journeyId)
+                          .direction;
+                  if (snapshot.data!.deviation.isNotEmpty) direction += ', ${snapshot.data!.deviation.join(', ')}';
+                }
+                return Row(
+                  children: [
+                    lineIcon(sname, fgColor, bgColor, bgLuminance, type, name, journeyNumber, context),
+                    const SizedBox(width: 12),
+                    Expanded(child: highlightFirstPart(direction, overflow: TextOverflow.fade))
+                  ],
+                );
+              }),
           actions: [
             IconButton(
                 onPressed: () {
@@ -69,7 +81,7 @@ class JourneyDetailWidget extends StatelessWidget {
           MediaQuery.of(context).systemGestureInsets,
           child: RefreshIndicator(
             onRefresh: () => _handleRefresh(),
-            child: StreamBuilder<JourneyDetailWithTrafficSituations?>(
+            child: StreamBuilder<JourneyDetailWithTrafficSituations>(
               builder: (context, journeyDetailWithTs) {
                 if (journeyDetailWithTs.connectionState == ConnectionState.waiting) return loadingPage();
                 if (!journeyDetailWithTs.hasData) {
@@ -105,7 +117,7 @@ class JourneyDetailWidget extends StatelessWidget {
   Future<void> _updateJourneyDetail() async {
     try {
       var response = await getJourneyDetail(journeyDetailRef, journeyId, journeyNumber, type, evaId, evaDateTime);
-      journeyDetail = response?.journeyDetail;
+      journeyDetail = response.journeyDetail;
       _streamController.add(response);
     } catch (error) {
       _streamController.addError(error);
@@ -123,7 +135,7 @@ bool _isAffectingThisJourney(TrafficSituation ts, Iterable<JourneyId> journeyIds
   return ts.affectedJourneys.isEmpty || ts.affectedJourneys.any((j) => ids.contains(j.gid));
 }
 
-Future<JourneyDetailWithTrafficSituations?> getJourneyDetail(
+Future<JourneyDetailWithTrafficSituations> getJourneyDetail(
     String journeyDetailRef, String journeyId, int? journeyNumber, String type, int evaId, DateTime evaDateTime) async {
   var response = reseplaneraren.getJourneyDetail(journeyDetailRef);
 
@@ -177,6 +189,7 @@ Future<JourneyDetailWithTrafficSituations?> getJourneyDetail(
   });
 
   var notes = <TS>{};
+  Iterable<String> deviation = [];
 
   if (isTrainType(type)) {
     List<Set<String>?> stopNotesLowPriority = List.filled(journeyDetail.stop.length, null, growable: false);
@@ -289,13 +302,17 @@ Future<JourneyDetailWithTrafficSituations?> getJourneyDetail(
       }
 
       journeyDetail.stop = stops;
+
+      deviation = journeyPartNotes
+          .where((note) => note.start == 0 && note.end >= stops.length - 2 && note.priority == 'normal')
+          .map((note) => note.text);
     }
   }
 
   await cancelledStops;
 
-  return JourneyDetailWithTrafficSituations(
-      journeyDetail, severeTs, normalTs, stopNoteIcons.map((s) => s != null ? getNoteIcon(s) : null));
+  return JourneyDetailWithTrafficSituations(journeyDetail, severeTs.toSet(), normalTs.toSet(),
+      stopNoteIcons.map((s) => s != null ? getNoteIcon(s) : null), deviation);
 }
 
 class JourneyPartNote {
@@ -380,6 +397,8 @@ class JourneyDetailWithTrafficSituations {
   Iterable<TS> importantTs;
   Iterable<TS> normalTs;
   Iterable<Icon?> stopNoteIcons;
+  Iterable<String> deviation;
 
-  JourneyDetailWithTrafficSituations(this.journeyDetail, this.importantTs, this.normalTs, this.stopNoteIcons);
+  JourneyDetailWithTrafficSituations(
+      this.journeyDetail, this.importantTs, this.normalTs, this.stopNoteIcons, this.deviation);
 }

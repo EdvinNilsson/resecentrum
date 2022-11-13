@@ -620,18 +620,21 @@ class Departure with DepartureStateMixin {
   late bool cancelled;
   late int journeyNumber;
   late bool arrival;
+  Iterable<String>? deviation;
 
   Departure(dynamic data, {this.arrival = false}) {
     fgColor = fromHex(data['fgColor']);
     stop = data['stop'];
     booking = data['booking'] == 'true';
     journeyDetailRef = data['JourneyDetailRef']['ref'];
-    direction = arrival ? stop.firstPart() : data['direction'];
+    type = data['type'];
+    direction = arrival
+        ? (isTrainType(type) ? shortStationName(stop.firstPart(), useAcronyms: false) : stop.firstPart())
+        : data['direction'];
     origin = data['origin'];
     track = data['track'];
     rtTrack = data['rtTrack'];
     sname = data['sname'];
-    type = data['type'];
     dateTime = parseDateTime(data['date'], data['time'])!;
     bgColor = fromHex(data['bgColor']);
     stroke = data['stroke'];
@@ -646,6 +649,16 @@ class Departure with DepartureStateMixin {
   }
 
   DateTime getDateTime() => rtDateTime ?? dateTime;
+
+  String getDirection({bool showOrigin = false}) {
+    return isTrainType(type)
+        ? [
+            showOrigin && origin != null
+                ? 'Från ${shortStationName(origin!.firstPart(), useAcronyms: false)}'
+                : direction
+          ].followedBy(deviation ?? []).join(', ')
+        : direction;
+  }
 }
 
 class JourneyDetail {
@@ -722,6 +735,18 @@ abstract class RouteIdx {
 
 T getValueAtRouteIdx<T extends RouteIdx>(Iterable<T> routeIdxs, int routeIdx) {
   return routeIdxs.lastWhere((r) => routeIdx >= r.routeIdxFrom && routeIdx <= r.routeIdxTo);
+}
+
+T getValueAtRouteIdxWithJid<T extends RouteIdx>(
+    Iterable<T> routeIdxs, int routeIdx, String journeyId, Iterable<JourneyId> journeyIds) {
+  JourneyId jidPart = journeyIds.firstWhere((j) => j.id == journeyId);
+
+  var jidRouteIdxs =
+      routeIdxs.where((idx) => idx.routeIdxFrom >= jidPart.routeIdxFrom && idx.routeIdxTo <= jidPart.routeIdxTo);
+
+  if (jidRouteIdxs.isEmpty) jidRouteIdxs = routeIdxs;
+
+  return getValueAtRouteIdx(jidRouteIdxs, routeIdx.clamp(jidPart.routeIdxFrom, jidPart.routeIdxTo));
 }
 
 class JourneyId extends RouteIdx {

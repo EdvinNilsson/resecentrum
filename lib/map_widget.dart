@@ -331,6 +331,10 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
         (s.lon - vehicle.position.long) * (s.lon - vehicle.position.long);
     int routeIdx = jd.stop.reduce((a, b) => sqDist(a) < sqDist(b) ? a : b).routeIdx;
 
+    var lineColor = getValueAtRouteIdxWithJid(jd.journeyColor, routeIdx, vehicle.journeyId, jd.journeyId);
+    var name = getValueAtRouteIdxWithJid(jd.journeyName, routeIdx, vehicle.journeyId, jd.journeyId).name;
+    var direction = getValueAtRouteIdxWithJid(jd.direction, routeIdx, vehicle.journeyId, jd.journeyId).direction;
+
     await showModalBottomSheet(
         context: context,
         builder: (context) {
@@ -341,12 +345,10 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
               AppBar(
                   title: Row(
                     children: [
-                      lineIcon(getValueAtRouteIdx(jd.journeyName, routeIdx).name, jd.fgColor, jd.bgColor, bgLuminance,
-                          jd.journeyType.first.type, '', null, context),
+                      lineIcon(
+                          name, lineColor.fg, lineColor.bg, bgLuminance, jd.journeyType.first.type, '', null, context),
                       const SizedBox(width: 12),
-                      Expanded(
-                          child: highlightFirstPart(getValueAtRouteIdx(jd.direction, routeIdx).direction,
-                              overflow: TextOverflow.fade))
+                      Expanded(child: highlightFirstPart(direction, overflow: TextOverflow.fade))
                     ],
                   ),
                   automaticallyImplyLeading: false),
@@ -813,7 +815,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   }
 
   void _showJourneyDetailSheet(Departure departure) {
-    final StreamController<JourneyDetailWithTrafficSituations?> streamController = StreamController();
+    final StreamController<JourneyDetailWithTrafficSituations> streamController = StreamController();
     Wrapper<JourneyDetail> journeyDetail = Wrapper(null);
     _updateJourneyDetail(streamController, departure, journeyDetail);
 
@@ -828,7 +830,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
             initialChildSize: 2 / (1 + math.sqrt(5)),
             maxChildSize: 1 - MediaQuery.of(ctx).padding.top / MediaQuery.of(ctx).size.height,
             builder: (context, scrollController) {
-              return StreamBuilder<JourneyDetailWithTrafficSituations?>(
+              return StreamBuilder<JourneyDetailWithTrafficSituations>(
                   stream: streamController.stream,
                   builder: (context, journeyDetailWithTs) {
                     var bgLuminance = Theme.of(context).cardColor.computeLuminance();
@@ -837,7 +839,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
                           children: [
                             lineIconFromDeparture(departure, bgLuminance, context),
                             const SizedBox(width: 12),
-                            Expanded(child: highlightFirstPart(departure.direction, overflow: TextOverflow.fade))
+                            Expanded(child: highlightFirstPart(departure.getDirection(), overflow: TextOverflow.fade))
                           ],
                         ),
                         pinned: true,
