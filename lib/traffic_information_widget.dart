@@ -1,7 +1,10 @@
+import 'dart:collection';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_custom_tabs/flutter_custom_tabs.dart';
+import 'package:html/parser.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'utils.dart';
@@ -13,11 +16,11 @@ class TrafficInformationWidget extends StatefulWidget {
   TrafficInformationState createState() => TrafficInformationState();
 }
 
-const String baseUrl = 'https://www.vasttrafik.se';
+const String url = 'https://www.vasttrafik.se/trafikinformation/';
 
 class TrafficInformationState extends State<TrafficInformationWidget> {
   bool _isLoading = true;
-  WebResourceError? _error;
+  Object? _error;
 
   WebViewController? _controller;
 
@@ -33,22 +36,17 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
       children: [
         SafeArea(
           child: WebView(
-              initialUrl: '$baseUrl/ts${Platform.isIOS ? 'iphone' : 'android'}',
               javascriptMode: JavascriptMode.unrestricted,
               zoomEnabled: false,
               backgroundColor: Theme.of(context).canvasColor,
-              onWebViewCreated: (controller) => _controller = controller,
-              onPageStarted: (_) {
-                _controller?.runJavascript('''
-                  const sheet = new CSSStyleSheet();
-                  sheet.replaceSync("${darkModeCSS.replaceAll('\n', ' ')}");  
-                  document.adoptedStyleSheets = [sheet];
-                ''');
+              onWebViewCreated: (controller) {
+                _controller = controller;
+                _load();
               },
               onPageFinished: (s) => setState(() => _isLoading = false),
               onWebResourceError: (e) => setState(() => _error = e),
               navigationDelegate: (NavigationRequest request) {
-                if (request.url.startsWith('$baseUrl/trafikinformation') || request.url.startsWith('$baseUrl/ts')) {
+                if (request.url.startsWith(url)) {
                   return NavigationDecision.navigate;
                 }
                 _launchURL(context, request.url);
@@ -64,10 +62,46 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
                   _error = null;
                   _isLoading = true;
                 });
-                _controller?.reload();
+                _load();
               }, error: NoInternetError(_error!))),
       ],
     );
+  }
+
+  void _load() async {
+    try {
+      var res = await Dio().get(url);
+
+      try {
+        var document = parse(res.data);
+
+        var content = document.getElementsByClassName('page-content')[0];
+        document.body!.insertBefore(content, document.body!.firstChild);
+
+        var elements = document.querySelectorAll('body > :not(script)');
+        for (var element in elements.skip(1)) {
+          element.remove();
+        }
+
+        var style = document.createElement('style');
+        style.innerHtml = customCss;
+        document.head!.append(style);
+
+        var csp = document.createElement('meta');
+        csp.attributes = {
+          'http-equiv': 'Content-Security-Policy',
+          'content': "script-src 'unsafe-inline' 'unsafe-eval' 'self' *.vasttrafik.se"
+        } as LinkedHashMap<Object, String>;
+        document.head!.append(csp);
+
+        _controller?.loadHtmlString(document.outerHtml, baseUrl: url);
+      } catch (_) {
+        _controller?.loadHtmlString(res.data, baseUrl: url);
+      }
+      setState(() => _isLoading = false);
+    } on DioError catch (e) {
+      setState(() => _error = e);
+    }
   }
 }
 
@@ -90,7 +124,12 @@ void _launchURL(BuildContext context, String url) async {
   }
 }
 
-const String darkModeCSS = '''
+const String customCss = '''
+html {
+    margin: 1rem;
+    height: auto;
+}
+
 @media (prefers-color-scheme: dark) {
     body {
         color: white;
