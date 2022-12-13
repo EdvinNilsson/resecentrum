@@ -147,30 +147,29 @@ html {
         color: #c2e4ef;
     }
     
-    .traffic-situation-one-dot-one[data-v-6e8db774] {
-        background-color: #424242;
-        border: solid #505050;
+    .traffic-situation-one-dot-one {
+        background-color: #424242 !important;
+        border: solid #505050 !important;
     }
     
-    .line-list-showcase__transport-mode[data-v-267d2d50] {
+    .line-list-showcase__transport-mode {
         filter: invert(1);
     }
     
-    .autocomplete[data-v-9fb93e08], .autocomplete[data-v-43ca31ec] {
-        background-color: #424242;
+    .autocomplete {
+        background-color: #424242 !important;
         box-shadow: inset 0 1px 2px #505050;
     }
     
-    .autocomplete .autocomplete-results[data-v-43ca31ec], .autocomplete .autocomplete-results[data-v-9fb93e08] {
-        background-color: #424242;
+    .autocomplete .autocomplete-results {
+        background-color: #424242 !important;
     }
     
-    .autocomplete .background-transparent[data-v-9fb93e08], .autocomplete .background-transparent[data-v-43ca31ec] {
-        color: white;
+    .autocomplete .background-transparent {
+        color: white !important;
     }
     
-    .autocomplete .background-transparent[data-v-9fb93e08]::placeholder,
-    .autocomplete .background-transparent[data-v-43ca31ec]::placeholder {
+    .autocomplete .background-transparent::placeholder {
         color: #BDBDBD;
     }
     
