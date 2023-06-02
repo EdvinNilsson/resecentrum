@@ -314,19 +314,6 @@ Future<void> getDepartureBoard(StreamController streamController, int stopId, Da
       }
     }
 
-    var filteredTs = (await ts)
-        ?.where((ts) => isPresent(ts.startTime, ts.endTime, dateTime ?? DateTime.now(), dateTime ?? DateTime.now()));
-
-    if (direction != null) {
-      filteredTs = filteredTs?.where((ts) => ts.affectedLines
-          .map((line) => line.gid)
-          .toSet()
-          .intersection(result.map((departure) => lineIdFromJourneyId(departure.journeyId)).toSet())
-          .isNotEmpty);
-    }
-
-    filteredTs = filteredTs?.sortTs(dateTime ?? DateTime.now());
-
     // If the next 20 departures does not include all departures within the next 15 minutes.
     if (result.isNotEmpty &&
         result.length >= 20 &&
@@ -351,6 +338,19 @@ Future<void> getDepartureBoard(StreamController streamController, int stopId, Da
       if (a.arrival != b.arrival) return a.arrival ? -1 : 1;
       return a.journeyId.compareTo(b.journeyId);
     });
+
+    var filteredTs = (await ts)?.where((ts) => isPresent(ts.startTime, ts.endTime, dateTime ?? DateTime.now(),
+        result.lastOrNull?.getDateTime() ?? dateTime ?? DateTime.now()));
+
+    if (direction != null) {
+      filteredTs = filteredTs?.where((ts) => ts.affectedLines
+          .map((line) => line.gid)
+          .toSet()
+          .intersection(result.map((departure) => lineIdFromJourneyId(departure.journeyId)).toSet())
+          .isNotEmpty);
+    }
+
+    filteredTs = filteredTs?.sortTs(dateTime ?? DateTime.now());
 
     streamController.add(DepartureBoardWithTrafficSituations(result, (filteredTs ?? []).cast<TS>().followedBy(notes)));
   } catch (error) {
