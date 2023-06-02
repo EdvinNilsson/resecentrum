@@ -226,7 +226,9 @@ class Trafikverket {
     });
   }
 
-  Future<Iterable<TrainAnnouncement>?> getLateTrains(String locationSignature, DateTime dateTime) async {
+  Future<Iterable<TrainAnnouncement>?> getLateTrains(String locationSignature, DateTime? dateTime) async {
+    bool now = dateTime == null;
+    dateTime ??= DateTime.now();
     return await _callApi('''
 <QUERY objecttype="TrainAnnouncement" schemaversion="1.6" orderby="AdvertisedTimeAtLocation">
     <FILTER>
@@ -237,6 +239,7 @@ class Trafikverket {
                 <EQ name='Advertised' value='true'/>
                 <OR>
                     <GTE name="EstimatedTimeAtLocation" value="${dateTime.toIso8601String()}" />
+                    ${!now ? '' : '''
                     <AND>
                         <EXISTS name="TimeAtLocation" value="false" />
                         <OR>
@@ -249,6 +252,7 @@ class Trafikverket {
                         </OR>
                         <EQ name="Canceled" value="false" />
                     </AND>
+                    '''}
                 </OR>
             </AND>
         </AND>

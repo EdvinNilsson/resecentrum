@@ -379,7 +379,7 @@ Future<void> _addTrainInfo(List<Departure> result, DepartureBoardOptions departu
   if (locationSignature == null) return;
 
   var lateTrainsRequest =
-      trainActivities.isNotEmpty ? trafikverket.getLateTrains(locationSignature, dateTime ?? DateTime.now()) : null;
+      trainActivities.isNotEmpty ? trafikverket.getLateTrains(locationSignature, dateTime) : null;
 
   String? directionSignature;
   if (direction != null) {
