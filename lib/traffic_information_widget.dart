@@ -1,5 +1,4 @@
 import 'dart:collection';
-import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -22,36 +21,35 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
   bool _isLoading = true;
   Object? _error;
 
-  WebViewController? _controller;
+  late final WebViewController _controller;
 
   @override
   void initState() {
     super.initState();
-    if (Platform.isAndroid) WebView.platform = SurfaceAndroidWebView();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..enableZoom(false)
+      ..setNavigationDelegate(NavigationDelegate(
+          onPageFinished: (s) => setState(() => _isLoading = false),
+          onWebResourceError: (e) => setState(() => _error = e),
+          onNavigationRequest: (NavigationRequest request) {
+            if (request.url.startsWith(url)) {
+              return NavigationDecision.navigate;
+            }
+            _launchURL(context, request.url);
+            return NavigationDecision.prevent;
+          }),
+      );
+    _load();
   }
 
   @override
   Widget build(BuildContext context) {
+    _controller.setBackgroundColor(Theme.of(context).canvasColor);
     return Stack(
       children: [
         SafeArea(
-          child: WebView(
-              javascriptMode: JavascriptMode.unrestricted,
-              zoomEnabled: false,
-              backgroundColor: Theme.of(context).canvasColor,
-              onWebViewCreated: (controller) {
-                _controller = controller;
-                _load();
-              },
-              onPageFinished: (s) => setState(() => _isLoading = false),
-              onWebResourceError: (e) => setState(() => _error = e),
-              navigationDelegate: (NavigationRequest request) {
-                if (request.url.startsWith(url)) {
-                  return NavigationDecision.navigate;
-                }
-                _launchURL(context, request.url);
-                return NavigationDecision.prevent;
-              }),
+          child: WebViewWidget(controller: _controller)
         ),
         if (_isLoading) loadingPage(),
         if (_error != null)
@@ -94,9 +92,9 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
         } as LinkedHashMap<Object, String>;
         document.head!.append(csp);
 
-        _controller?.loadHtmlString(document.outerHtml, baseUrl: url);
+        _controller.loadHtmlString(document.outerHtml, baseUrl: url);
       } catch (_) {
-        _controller?.loadHtmlString(res.data, baseUrl: url);
+        _controller.loadHtmlString(res.data, baseUrl: url);
       }
       setState(() => _isLoading = false);
     } on DioError catch (e) {

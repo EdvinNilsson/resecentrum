@@ -21,13 +21,13 @@ class Reseplaneraren {
   final String _uuid = const Uuid().v4();
 
   final Dio _dio = Dio(
-      BaseOptions(baseUrl: 'https://api.vasttrafik.se/bin/rest.exe/v2', connectTimeout: 10000, receiveTimeout: 10000));
+      BaseOptions(baseUrl: 'https://api.vasttrafik.se/bin/rest.exe/v2', connectTimeout: const Duration(seconds: 10), receiveTimeout: const Duration(seconds: 10)));
 
   final Dio _tsDio =
-      Dio(BaseOptions(baseUrl: 'https://api.vasttrafik.se/ts/v1', connectTimeout: 10000, receiveTimeout: 10000));
+      Dio(BaseOptions(baseUrl: 'https://api.vasttrafik.se/ts/v1', connectTimeout: const Duration(seconds: 10), receiveTimeout: const Duration(seconds: 10)));
 
   final Dio _mgateDio =
-      Dio(BaseOptions(baseUrl: 'https://rrp.vasttrafik.se/bin/mgate.exe', connectTimeout: 5000, receiveTimeout: 5000));
+      Dio(BaseOptions(baseUrl: 'https://rrp.vasttrafik.se/bin/mgate.exe', connectTimeout: const Duration(seconds: 5), receiveTimeout: const Duration(seconds: 5)));
 
   Future<T> _callApi<T>(String path, Map<String, dynamic>? queryParameters, T Function(Response) generator,
       {bool secondTry = false, Dio? altDio, Duration retry = const Duration(seconds: 1, milliseconds: 500)}) async {
@@ -74,8 +74,8 @@ class Reseplaneraren {
 
     var dio = Dio(BaseOptions(
         baseUrl: 'https://api.vasttrafik.se',
-        connectTimeout: 5000,
-        receiveTimeout: 5000,
+        connectTimeout: const Duration(seconds: 5),
+        receiveTimeout: const Duration(seconds: 5),
         contentType: Headers.formUrlEncodedContentType,
         headers: {'Authorization': 'Basic ${base64.encode(utf8.encode(auth))}'}));
 
@@ -85,7 +85,7 @@ class Reseplaneraren {
 
       return res.data['access_token'];
     } catch (e) {
-      if (e is DioError && e.type == DioErrorType.response) throw DisplayableError('Autentisering misslyckades');
+      if (e is DioError && e.response?.statusCode == 401) throw DisplayableError('Autentisering misslyckades');
       throw NoInternetError(e);
     }
   }

@@ -171,7 +171,7 @@ Future<JourneyDetailWithTrafficSituations> getJourneyDetail(
       .sortTs(journeyDetail.stop.first.getDateTime());
   Iterable<TS> severeTs = [
     journeyTs?.where((ts) => isPresent(ts.startTime, ts.endTime, journeyDetail.stop.first.getDateTime().startOfDay(),
-            journeyDetail.stop.first.getDateTime().startOfDay().add(const Duration(days: 1)))) ??
+            journeyDetail.stop.first.getDateTime().startOfNextDay())) ??
         [],
     filteredLineTs?.where((ts) => ts.severity == 'severe') ?? []
   ].expand((ts) => ts);

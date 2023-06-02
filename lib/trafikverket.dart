@@ -9,7 +9,7 @@ Trafikverket trafikverket = Trafikverket();
 
 class Trafikverket {
   final Dio _dio =
-      Dio(BaseOptions(baseUrl: 'https://api.trafikinfo.trafikverket.se', connectTimeout: 5000, receiveTimeout: 10000));
+      Dio(BaseOptions(baseUrl: 'https://api.trafikinfo.trafikverket.se', connectTimeout: const Duration(seconds: 5), receiveTimeout: const Duration(seconds: 10)));
 
   Future<T?> _callApi<T>(String query, T Function(Response) generator) async {
     try {

@@ -8,7 +8,7 @@ VehiclePositionsService vehiclePositionsService = VehiclePositionsService();
 class VehiclePositionsService {
   String? _accessToken;
 
-  final Dio _dio = Dio(BaseOptions(baseUrl: 'https://api.vasttrafik.se', connectTimeout: 5000, receiveTimeout: 3000));
+  final Dio _dio = Dio(BaseOptions(baseUrl: 'https://ext-api.vasttrafik.se', connectTimeout: const Duration(seconds: 5), receiveTimeout: const Duration(seconds: 5)));
 
   Future<T?> _callApi<T>(String path, Map<String, dynamic>? queryParameters, T Function(Response) generator,
       {bool secondTry = false}) async {

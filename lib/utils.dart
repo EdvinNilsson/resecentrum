@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:collection/collection.dart';
 import 'package:dio/dio.dart';
@@ -12,7 +11,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:maplibre_gl/mapbox_gl.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:webview_flutter/platform_interface.dart';
 
 import 'extensions.dart';
 import 'map_widget.dart';
@@ -401,8 +399,7 @@ class NoInternetError extends DisplayableError {
   NoInternetError(Object error)
       : super('Det är inte alltid trafiken rullar på som den ska',
             description: 'Kunde inte kontakta Västtrafik för tillfället', icon: Icons.cloud_off) {
-    if (error is DioError && error.type == DioErrorType.other ||
-        error is WebResourceError && error.errorType == WebResourceErrorType.hostLookup) {
+    if (error is DioError && error.type == DioErrorType.unknown) {
       message = 'Ingen internetanslutning';
       description = null;
     }

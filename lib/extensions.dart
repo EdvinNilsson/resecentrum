@@ -18,12 +18,12 @@ extension IterableExt<T> on Iterable<T> {
 
 extension ListExt<T> on List<T> {
   List<T> addIf(bool predicate, T? value) {
-    if (predicate) add(value as T);
+    if (predicate && value != null) add(value);
     return this;
   }
 
   List<T> insertIf(bool predicate, int index, T? value) {
-    if (predicate) insert(index, value as T);
+    if (predicate && value != null) insert(index, value);
     return this;
   }
 }
