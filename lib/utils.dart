@@ -278,10 +278,11 @@ Widget displayTSs(Iterable<TS> ts) {
 
 const List<String> acronymWords = ['central', 'norra', 'södra', 'östra', 'västra'];
 const List<String> excludeWords = ['station', '(tåg)', 'central', 'resecentrum', 'city'];
+const String vowels = 'aeiouyåäö';
 
 String shortStationName(String name, {bool useAcronyms = true}) {
   var splits = name.firstPart().split(' ');
-  var result = [];
+  var result = <String>[];
 
   for (var word in splits) {
     if (useAcronyms && acronymWords.contains(word.toLowerCase())) {
@@ -290,6 +291,15 @@ String shortStationName(String name, {bool useAcronyms = true}) {
     }
     if (excludeWords.contains(word.toLowerCase())) continue;
     result.add(word);
+  }
+
+  // Remove genitive case from station name.
+  // For example, "Stenungsunds station" will be "Stenungsund" instead of "Stenungsunds".
+  var stationName = result.firstOrNull;
+  if (stationName != null && stationName.length >= 2) {
+    if (stationName.characters.last == 's' && !vowels.contains(stationName[stationName.length - 2])) {
+      result[0] = stationName.substring(0, stationName.length - 1);
+    }
   }
 
   return result.join(' ');
