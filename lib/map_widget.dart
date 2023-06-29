@@ -95,9 +95,12 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     }
   }
 
+  bool _mapCreated = false;
+
   void _onMapCreated(MaplibreMapController controller) {
     _mapController = controller;
     _mapController.onFeatureTapped.add(_onFeatureTap);
+    _mapCreated = true;
   }
 
   @override
@@ -139,13 +142,13 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     await _mapController.addLineLayer(
         'walks',
         'walks',
-        const LineLayerProperties(
+        LineLayerProperties(
           lineColor: '#000000',
           lineOpacity: 0.5,
           lineWidth: 4,
           lineDasharray: [
             Expressions.literal,
-            [1, 1 / 2]
+            !kIsWeb && Platform.isIOS ? [1, 1, 1 / 2] : [1, 1 / 2]
           ],
         ),
         enableInteraction: false);
@@ -337,7 +340,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   bool _updatingNearbyStops = false;
 
   void _onCameraIdle() async {
-    if (_updatingNearbyStops) return;
+    if (_updatingNearbyStops || !_mapCreated) return;
     _updatingNearbyStops = true;
     await _updateNearbyStops();
     _updatingNearbyStops = false;
