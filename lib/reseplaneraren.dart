@@ -20,8 +20,26 @@ class Reseplaneraren {
   String? _accessToken;
   final String _uuid = const Uuid().v4();
 
-  final Dio _dio = Dio(
-      BaseOptions(baseUrl: 'https://api.vasttrafik.se/bin/rest.exe/v2', connectTimeout: const Duration(seconds: 10), receiveTimeout: const Duration(seconds: 10)));
+  final Dio _dio = Dio(BaseOptions(
+      baseUrl: 'https://api.vasttrafik.se/bin/rest.exe/v2',
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10)))
+    ..interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (RequestOptions options, RequestInterceptorHandler handler) {
+          return handler.next(options);
+        },
+        onResponse: (Response response, ResponseInterceptorHandler handler) {
+          if (response.data is String) {
+            response.data = jsonDecode(response.data);
+          }
+          return handler.next(response);
+        },
+        onError: (DioException e, ErrorInterceptorHandler handler) {
+          return handler.next(e);
+        },
+      ),
+    );
 
   final Dio _tsDio =
       Dio(BaseOptions(baseUrl: 'https://api.vasttrafik.se/ts/v1', connectTimeout: const Duration(seconds: 10), receiveTimeout: const Duration(seconds: 10)));
