@@ -3,17 +3,10 @@ import 'dart:ui';
 import 'package:intl/intl.dart';
 import 'package:maplibre_gl/mapbox_gl.dart';
 
-import 'reseplaneraren.dart';
-import 'utils.dart';
+import 'network/traffic_situations.dart';
 
 extension IterableExt<T> on Iterable<T> {
-  T? tryElementAt(int index) {
-    try {
-      return elementAt(index);
-    } catch (e) {
-      return null;
-    }
-  }
+  T? tryElementAt(int index) => (index >= 0 && index < length) ? elementAt(index) : null;
 }
 
 extension ListExt<T> on List<T> {
@@ -43,8 +36,12 @@ extension StringExt on String {
 extension StringIterableExt on Iterable<String> {
   String joinNaturally() {
     if (length <= 1) return join();
-    return toList(growable: false).getRange(0, length - 1).join(', ') + (length > 1 ? ' och ' : '') + last;
+    return '${toList(growable: false).getRange(0, length - 1).join(', ')} och $last';
   }
+}
+
+extension BoolIterableExt on Iterable<bool> {
+  bool all() => every((b) => b);
 }
 
 extension ColorExt on Color {
@@ -77,6 +74,15 @@ extension TimeExt on DateTime {
   bool isSameDayAs(DateTime other) {
     return day == other.day && month == other.month && year == other.year;
   }
+
+  bool isSameTransportDayAs(DateTime other) {
+    const startOfTransportDay = Duration(hours: 4); // 04:00
+    return subtract(startOfTransportDay).isSameDayAs(other.subtract(startOfTransportDay));
+  }
+
+  String toRfc3339String() {
+    return '${DateFormat('yyyy-MM-ddTHH:mm:ss').format(toLocal())}+0${timeZoneOffset.inHours}:00';
+  }
 }
 
 extension LatLngExt on LatLng {
@@ -97,7 +103,7 @@ extension TrafficInformationExt on Iterable<TrafficSituation> {
   Iterable<TrafficSituation> sortTs(DateTime dateTime) {
     var list = toList(growable: false)
       ..sort((a, b) {
-        int cmp = getNotePriority(a.severity).compareTo(getNotePriority(b.severity));
+        int cmp = b.severity.compareTo(a.severity);
         if (cmp != 0) return cmp;
         return (dateTime.difference(a.startTime).abs() - dateTime.difference(b.startTime).abs()).inHours;
       });
@@ -132,4 +138,8 @@ extension LatLngBoundsExt on LatLngBounds {
         southwest: LatLng(southwest.latitude - heightBuffer, southwest.longitude - widthBuffer),
         northeast: LatLng(northeast.latitude + heightBuffer, northeast.longitude + widthBuffer));
   }
+}
+
+extension BoolExt on bool {
+  bool implies(bool other) => !this || other;
 }

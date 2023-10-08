@@ -2,13 +2,11 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:hive/hive.dart';
-import 'package:intl/intl.dart';
 
 import 'extensions.dart';
 import 'favorites.dart';
-import 'reseplaneraren.dart';
+import 'network/planera_resa.dart';
 import 'utils.dart';
 
 class LocationSearcherWidget extends StatelessWidget {
@@ -21,8 +19,7 @@ class LocationSearcherWidget extends StatelessWidget {
   final TextEditingController _textController = RichTextEditingController();
   final StreamController<Suggestions?> _streamController = StreamController();
 
-  LocationSearcherWidget(String currentText, this._hintText, this._onlyStops, this._initialLocation, {Key? key})
-      : super(key: key) {
+  LocationSearcherWidget(String currentText, this._hintText, this._onlyStops, this._initialLocation, {super.key}) {
     if (currentText.isNotEmpty) {
       _textController.text = currentText;
       _textController.selection = TextSelection(baseOffset: 0, extentOffset: currentText.length);
@@ -45,6 +42,7 @@ class LocationSearcherWidget extends StatelessWidget {
                 autofocus: true,
                 cursorColor: Colors.white,
                 keyboardType: TextInputType.streetAddress,
+                autocorrect: false,
                 decoration: InputDecoration(
                     hintText: _hintText,
                     hintStyle: const TextStyle(color: Colors.white60),
@@ -73,11 +71,8 @@ class LocationSearcherWidget extends StatelessWidget {
 
                   String? distanceText;
                   if (option.data!.showDistance) {
-                    int distance = Geolocator.distanceBetween(
-                            location.lat, location.lon, _initialLocation!.lat, _initialLocation!.lon)
-                        .round();
-                    distanceText =
-                        distance < 1000 ? '${distance.round()} m' : '${NumberFormat('#.#').format(distance / 1000)} km';
+                    int distance = distanceBetween(location.position, _initialLocation!.position).round();
+                    distanceText = getDistanceString(distance);
                   }
 
                   return SuggestionWidget(location, () => _onSelected(location), extraText: distanceText);
@@ -137,7 +132,7 @@ class LocationSearcherWidget extends StatelessWidget {
 
   void _getLocalSuggestions(String input, {bool initial = false}) {
     var result = searchLocation(input);
-    if (_onlyStops) result = result.whereType<StopLocation>().cast<Location>();
+    if (_onlyStops) result = result.whereType<StopLocation>().where((stop) => stop.isStopArea).cast<Location>();
     if (initial && _initialLocation != null && _initialLocation is! CurrentLocation) {
       result = {_initialLocation!}.followedBy(result);
     }
@@ -149,7 +144,7 @@ class LocationSearcherWidget extends StatelessWidget {
   Future<void> _getSuggestions(String input) async {
     Iterable<Location>? response;
     try {
-      response = await reseplaneraren.getLocationByName(input, onlyStops: _onlyStops);
+      response = await PlaneraResa.locationsByText(input, types: _onlyStops ? {LocationType.stoparea} : null);
     } catch (error) {
       if (_lastSuggestions?._offline.isEmpty ?? true) {
         _streamController.addError(error);
@@ -168,6 +163,7 @@ class LocationSearcherWidget extends StatelessWidget {
       location = currentLocation.cachedLocation ?? await currentLocation.location(onlyStops: _onlyStops);
     } catch (e) {
       if (e is DisplayableError) {
+        if (!_context.mounted) return false;
         noLocationFound(_context, onlyStops: _onlyStops, plural: true, description: e.description ?? e.message);
       }
       return false;
@@ -177,8 +173,7 @@ class LocationSearcherWidget extends StatelessWidget {
 
     Iterable<StopLocation>? response;
     try {
-      response = await reseplaneraren.getLocationNearbyStops(currentLocation.lat, currentLocation.lon,
-          maxNo: 100, maxDist: 3000);
+      response = await PlaneraResa.nearbyStops(currentLocation.position, limit: 20, radiusInMeters: 3000);
     } catch (error) {
       _streamController.addError(error);
       return false;
@@ -194,8 +189,8 @@ class LocationSearcherWidget extends StatelessWidget {
 }
 
 IconData _getLocationIcon(Location location) {
-  if (location is StopLocation) return getStopIcon(location.id.toString());
-  if (location is CoordLocation && location.type == 'POI') {
+  if (location is StopLocation) return getStopIcon(location);
+  if (location is CoordLocation && location.type == LocationType.pointofinterest) {
     return Icons.account_balance;
   }
   return Icons.place;
@@ -209,8 +204,7 @@ class SuggestionWidget extends StatefulWidget {
   final String? extraText;
 
   const SuggestionWidget(this._location, this._onTap,
-      {this.onLongPress, this.callOnFavoriteChange = true, this.extraText, Key? key})
-      : super(key: key);
+      {this.onLongPress, this.callOnFavoriteChange = true, this.extraText, super.key});
 
   @override
   State<SuggestionWidget> createState() => _SuggestionWidgetState();
@@ -306,8 +300,7 @@ class LocationField extends StatefulWidget {
   final FocusNode? focusNode;
 
   const LocationField(this._controller, this._textController, this._hintText,
-      {this.suffixIcon, this.onlyStops = false, this.focusNode, Key? key})
-      : super(key: key);
+      {this.suffixIcon, this.onlyStops = false, this.focusNode, super.key});
 
   @override
   State<LocationField> createState() => _LocationFieldState();

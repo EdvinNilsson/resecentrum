@@ -4,8 +4,8 @@ import 'extensions.dart';
 import 'favorites.dart';
 import 'location_searcher.dart';
 import 'main.dart';
+import 'network/planera_resa.dart';
 import 'options_panel.dart';
-import 'reseplaneraren.dart';
 import 'trip_result_widget.dart';
 import 'utils.dart';
 
@@ -25,7 +25,7 @@ class TripWidget extends StatelessWidget {
   final GlobalKey<_TripHistoryListState> _tripHistoryKey = GlobalKey();
   final GlobalKey<_FavoritePlacesListState> _favoritePlacesKey = GlobalKey();
 
-  TripWidget({Key? key}) : super(key: key);
+  TripWidget({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -201,7 +201,7 @@ class FavoritePlacesList extends StatefulWidget {
   final void Function(Location)? onLongPress;
   final bool onlyStops;
 
-  const FavoritePlacesList({required this.onTap, this.onLongPress, this.onlyStops = false, Key? key}) : super(key: key);
+  const FavoritePlacesList({required this.onTap, this.onLongPress, this.onlyStops = false, super.key});
 
   @override
   State<FavoritePlacesList> createState() => _FavoritePlacesListState();
@@ -215,8 +215,10 @@ class _FavoritePlacesListState extends State<FavoritePlacesList> {
   @override
   Widget build(BuildContext context) {
     onFavoriteChange = _update;
-    var favoriteLocations =
-        (widget.onlyStops ? allFavoriteLocations.whereType<StopLocation>() : allFavoriteLocations).toList();
+    var favoriteLocations = (widget.onlyStops
+            ? allFavoriteLocations.whereType<StopLocation>().where((stop) => stop.isStopArea)
+            : allFavoriteLocations)
+        .toList();
     if (favoriteLocations.isEmpty) {
       return noDataSliver('Här visas ${widget.onlyStops ? 'favorithållplatser' : 'favoritplatser'}');
     }
@@ -237,7 +239,7 @@ class _FavoritePlacesListState extends State<FavoritePlacesList> {
 class TripHistoryList extends StatefulWidget {
   final void Function(TripHistory) _onTap;
 
-  const TripHistoryList(this._onTap, {Key? key}) : super(key: key);
+  const TripHistoryList(this._onTap, {super.key});
 
   @override
   State<TripHistoryList> createState() => _TripHistoryListState();
@@ -248,6 +250,7 @@ class _TripHistoryListState extends State<TripHistoryList> {
 
   @override
   Widget build(BuildContext context) {
+    moveFavoriteTripToTop();
     return tripHistory.isEmpty
         ? noDataSliver('Här visas tidigare resvägar samt dina favoritresvägar')
         : SliverReorderableList(

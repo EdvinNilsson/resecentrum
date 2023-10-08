@@ -1,61 +1,52 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:collection/collection.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'departure_board_result_widget.dart';
 import 'departure_board_widget.dart';
 import 'extensions.dart';
 import 'map_widget.dart';
-import 'reseplaneraren.dart';
-import 'trafikverket.dart';
+import 'network/planera_resa.dart';
+import 'network/traffic_situations.dart';
+import 'network/trafikverket.dart';
 import 'utils.dart';
 
-class JourneyDetailWidget extends StatelessWidget {
-  final String journeyDetailRef;
-  final String sname;
-  final Color fgColor;
-  final Color bgColor;
-  final String type;
-  final String name;
-  final int? journeyNumber;
-  final String direction;
-  final String journeyId;
-  final int evaId;
-  final DateTime evaDateTime;
+class JourneyDetailsWidget extends StatelessWidget {
+  final DetailsRef detailsReference;
 
-  JourneyDetail? journeyDetail;
+  ServiceJourney get serviceJourney => detailsReference.serviceJourney;
 
-  JourneyDetailWidget(this.journeyDetailRef, this.sname, this.fgColor, this.bgColor, this.direction, this.journeyId,
-      this.type, this.name, this.journeyNumber, this.evaId, this.evaDateTime,
-      {Key? key})
-      : super(key: key);
+  ServiceJourneyDetails? _serviceJourneyDetails;
 
-  final StreamController<JourneyDetailWithTrafficSituations> _streamController = StreamController.broadcast();
+  JourneyDetailsWidget(this.detailsReference, {super.key});
 
-  Future<void> _handleRefresh() async => _updateJourneyDetail();
+  final StreamController<ServiceJourneyDetailsWithTrafficSituations> _streamController = StreamController.broadcast();
+
+  Future<void> _handleRefresh() async => _updateJourneyDetails();
 
   @override
   Widget build(BuildContext context) {
-    _updateJourneyDetail();
-    var bgLuminance = Theme.of(context).primaryColor.computeLuminance();
+    _updateJourneyDetails();
+    var bgColor = Theme.of(context).primaryColor;
     return Scaffold(
         appBar: AppBar(
-          title: StreamBuilder<JourneyDetailWithTrafficSituations>(
+          title: StreamBuilder<ServiceJourneyDetailsWithTrafficSituations>(
               stream: _streamController.stream,
               builder: (context, snapshot) {
-                var journeyDetail = snapshot.data?.journeyDetail;
-                var direction = this.direction;
-                if (journeyDetail != null) {
-                  var idx = journeyDetail.stop.firstWhere((s) => s.id == evaId).routeIdx;
-                  direction =
-                      getValueAtRouteIdxWithJid(journeyDetail.direction, idx, journeyId, journeyDetail.journeyId)
-                          .direction;
+                var serviceJourneyDetails = snapshot.data?.serviceJourneyDetails;
+                var direction = serviceJourney.direction;
+                if (serviceJourneyDetails != null && (serviceJourney.isTrain || serviceJourney.origin != null)) {
+                  direction = serviceJourneyDetails.serviceJourneys
+                      .firstWhere((serviceJourney) => serviceJourney.gid == this.serviceJourney.gid)
+                      .direction;
                   if (snapshot.data!.deviation.isNotEmpty) direction += ', ${snapshot.data!.deviation.join(', ')}';
                 }
                 return Row(
                   children: [
-                    lineIcon(sname, fgColor, bgColor, bgLuminance, type, name, journeyNumber, context),
+                    lineIconFromLine(serviceJourney.line, bgColor, context, shortTrainName: false),
                     const SizedBox(width: 12),
                     Expanded(child: highlightFirstPart(direction, overflow: TextOverflow.fade))
                   ],
@@ -66,11 +57,9 @@ class JourneyDetailWidget extends StatelessWidget {
                 onPressed: () {
                   Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
                     return MapWidget([
-                      journeyDetail != null
-                          ? MapJourney(journeyDetail: journeyDetail)
-                          : MapJourney(
-                              journeyDetailRef: JourneyDetailRef(
-                                  journeyDetailRef, journeyId, journeyNumber, type, evaId, evaDateTime))
+                      _serviceJourneyDetails != null
+                          ? MapJourney(serviceJourneyDetails: _serviceJourneyDetails)
+                          : MapJourney(journeyDetailsRef: detailsReference)
                     ]);
                   }));
                 },
@@ -81,25 +70,25 @@ class JourneyDetailWidget extends StatelessWidget {
           MediaQuery.of(context).systemGestureInsets,
           child: RefreshIndicator(
             onRefresh: () => _handleRefresh(),
-            child: StreamBuilder<JourneyDetailWithTrafficSituations>(
+            child: StreamBuilder<ServiceJourneyDetailsWithTrafficSituations>(
               builder: (context, journeyDetailWithTs) {
                 if (journeyDetailWithTs.connectionState == ConnectionState.waiting) return loadingPage();
                 if (!journeyDetailWithTs.hasData) {
-                  return ErrorPage(_updateJourneyDetail, error: journeyDetailWithTs.error);
+                  return ErrorPage(_updateJourneyDetails, error: journeyDetailWithTs.error);
                 }
+                var firstStop = journeyDetailWithTs.data!.serviceJourneyDetails.firstCall!;
+                var lastStop = journeyDetailWithTs.data!.serviceJourneyDetails.lastCall!;
                 return CustomScrollView(
                   slivers: [
-                    if (!journeyDetailWithTs.data!.journeyDetail.stop.first.getDateTime().isSameDayAs(DateTime.now()) &&
-                        !journeyDetailWithTs.data!.journeyDetail.stop.last.getDateTime().isSameDayAs(DateTime.now()))
-                      dateBar(journeyDetailWithTs.data!.journeyDetail.stop.first.getDateTime(),
-                          margin: 15, showTime: false),
+                    if (!firstStop.time.isSameDayAs(DateTime.now()) && !lastStop.time.isSameDayAs(DateTime.now()))
+                      dateBar(firstStop.time, margin: 15, showTime: false),
                     SliverSafeArea(
                         sliver: trafficSituationList(journeyDetailWithTs.data!.importantTs,
                             boldTitle: true, padding: const EdgeInsets.fromLTRB(10, 10, 10, 0)),
                         bottom: false),
                     SliverSafeArea(
                         sliver: journeyDetailList(
-                            journeyDetailWithTs.data!.journeyDetail, journeyDetailWithTs.data!.stopNoteIcons),
+                            journeyDetailWithTs.data!.serviceJourneyDetails, journeyDetailWithTs.data!.stopNoteIcons),
                         bottom: false),
                     SliverSafeArea(
                       sliver: trafficSituationList(journeyDetailWithTs.data!.normalTs,
@@ -114,45 +103,52 @@ class JourneyDetailWidget extends StatelessWidget {
         ));
   }
 
-  Future<void> _updateJourneyDetail() async {
+  Future<void> _updateJourneyDetails() async {
     try {
-      var response = await getJourneyDetail(journeyDetailRef, journeyId, journeyNumber, type, evaId, evaDateTime);
-      journeyDetail = response.journeyDetail;
+      var response = await getJourneyDetails(detailsReference);
+      _serviceJourneyDetails = response.serviceJourneyDetails;
       _streamController.add(response);
-    } catch (error) {
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        print(error);
+        print(stackTrace);
+      }
       _streamController.addError(error);
     }
   }
 }
 
-bool _isAffectingThisDirection(TrafficSituation ts, Iterable<int> stopIds, Direction direction) {
-  if (ts.affectedStopPoints.isEmpty || ts.title.contains('mot ${direction.direction}')) return true;
-  return ts.affectedStopPoints.any((s) => stopIds.contains(s.gid));
+bool _isAffectingThisDirection(TrafficSituation ts, Iterable<String> stopPointGids, String direction) {
+  if (ts.affectedStopPoints.isEmpty || ts.title.contains('mot $direction')) return true;
+  return ts.affectedStopPoints.any((stopPoint) => stopPointGids.contains(stopPoint.gid));
 }
 
-bool _isAffectingThisJourney(TrafficSituation ts, Iterable<JourneyId> journeyIds) {
-  var ids = journeyIds.map((j) => j.id);
-  return ts.affectedJourneys.isEmpty || ts.affectedJourneys.any((j) => ids.contains(j.gid));
+bool _isAffectingThisJourney(TrafficSituation ts, Iterable<ServiceJourney> serviceJourneys) {
+  var gids = serviceJourneys.map((j) => j.gid);
+  return ts.affectedJourneys.isEmpty || ts.affectedJourneys.any((j) => gids.contains(j.gid));
 }
 
-Future<JourneyDetailWithTrafficSituations> getJourneyDetail(
-    String journeyDetailRef, String journeyId, int? journeyNumber, String type, int evaId, DateTime evaDateTime) async {
-  var response = reseplaneraren.getJourneyDetail(journeyDetailRef);
+Future<ServiceJourneyDetailsWithTrafficSituations> getJourneyDetails(DetailsRef detailsReference) async {
+  var response = PlaneraResa.details(detailsReference,
+      {DepartureDetailsIncludeType.serviceJourneyCalls, DepartureDetailsIncludeType.serviceJourneyCoordinates});
 
-  Future<void>? mgateExtra;
-  if (!isTrainType(type)) mgateExtra = reseplaneraren.setMgateExtra(evaDateTime, evaId, response);
+  var serviceJourney = detailsReference.serviceJourney;
 
-  var journeyTsReq = reseplaneraren.getTrafficSituationsByJourneyId(journeyId).suppress();
-  var lineTs = reseplaneraren.getTrafficSituationsByLineId(lineIdFromJourneyId(journeyId)).suppress();
+  var journeyTsReq = TrafficSituations.getTrafficSituationsForJourney(serviceJourney.gid).suppress();
+  var lineTs = TrafficSituations.getTrafficSituationsForLine(lineIdFromJourneyId(serviceJourney.gid)).suppress();
 
-  var journeyDetail = await response;
+  var serviceJourneysDetails = await response;
+  var serviceJourneys = serviceJourneysDetails.serviceJourneys;
 
-  if (journeyDetail.journeyId.length > 1) {
-    for (var journey in journeyDetail.journeyId.where((j) => j.id != journeyId)) {
+  // Get traffic information for all other service journeys
+  if (serviceJourneys.length > 1) {
+    for (var journey in serviceJourneys.where((j) => j.gid != serviceJourney.gid)) {
       journeyTsReq = journeyTsReq.then((ts) async =>
-          ts?.followedBy((await reseplaneraren.getTrafficSituationsByJourneyId(journey.id).suppress()) ?? []));
-      lineTs = lineTs.then((ts) async => ts?.followedBy(
-          (await reseplaneraren.getTrafficSituationsByLineId(lineIdFromJourneyId(journey.id)).suppress()) ?? []));
+          ts?.followedBy((await TrafficSituations.getTrafficSituationsForJourney(journey.gid).suppress()) ?? []));
+      if (lineIdFromJourneyId(serviceJourney.gid) != lineIdFromJourneyId(journey.gid)) {
+        lineTs = lineTs.then((ts) async => ts?.followedBy(
+            (await TrafficSituations.getTrafficSituationsForLine(lineIdFromJourneyId(journey.gid)).suppress()) ?? []));
+      }
     }
     journeyTsReq = journeyTsReq.then((ts) => ts?.toSet());
     lineTs = lineTs.then((ts) => ts?.toSet());
@@ -160,63 +156,62 @@ Future<JourneyDetailWithTrafficSituations> getJourneyDetail(
 
   var journeyTs = await journeyTsReq;
 
-  var stopIds = journeyDetail.stop.map((s) => s.id).toList();
+  var allStops = serviceJourneysDetails.allCalls.toList(growable: false);
+
+  var stopPointGids = allStops.map((s) => s.stopPoint.gid).toList();
   var filteredLineTs = (await lineTs)
       ?.where((ts) =>
-          isPresent(ts.startTime, ts.endTime, journeyDetail.stop.first.getDateTime(),
-              journeyDetail.stop.last.getDateTime()) &&
-          _isAffectingThisDirection(ts, stopIds, journeyDetail.direction.last) &&
-          _isAffectingThisJourney(ts, journeyDetail.journeyId) &&
+          isPresent(ts.startTime, ts.endTime, allStops.first.time, allStops.last.time) &&
+          _isAffectingThisDirection(ts, stopPointGids, serviceJourneys.last.direction) &&
+          _isAffectingThisJourney(ts, serviceJourneys) &&
           (journeyTs?.every((jts) => jts.situationNumber != ts.situationNumber) ?? true))
-      .sortTs(journeyDetail.stop.first.getDateTime());
+      .sortTs(allStops.first.time);
   Iterable<TS> severeTs = [
-    journeyTs?.where((ts) => isPresent(ts.startTime, ts.endTime, journeyDetail.stop.first.getDateTime().startOfDay(),
-            journeyDetail.stop.first.getDateTime().startOfNextDay())) ??
+    journeyTs?.where((ts) => isPresent(
+            ts.startTime, ts.endTime, allStops.first.time.startOfDay(), allStops.first.time.startOfNextDay())) ??
         [],
-    filteredLineTs?.where((ts) => ts.severity == 'severe') ?? []
+    filteredLineTs?.where((ts) => ts.severity == Severity.high) ?? []
   ].expand((ts) => ts);
-  Iterable<TS> normalTs = filteredLineTs?.where((ts) => ts.severity != 'severe').cast() ?? [];
+  Iterable<TS> normalTs = filteredLineTs?.where((ts) => ts.severity != Severity.high).cast() ?? [];
 
-  List<String?> stopNoteIcons = List.filled(journeyDetail.stop.length, null, growable: false);
+  List<Severity?> stopNoteIcons = List.filled(allStops.length, null, growable: false);
 
   filteredLineTs?.forEach((ts) {
-    if (ts.affectedStopPoints.length >= stopIds.length) return;
+    if (ts.affectedStopPoints.length >= stopPointGids.length) return;
     for (var stop in ts.affectedStopPoints) {
-      int i = stopIds.indexWhere((id) => stopAreaFromStopId(id) == stop.stopAreaGid);
+      int i = stopPointGids.indexWhere((stopPointGid) => stopAreaFromStopPoint(stopPointGid) == stop.stopAreaGid);
       if (i < 0) continue;
-      stopNoteIcons[i] = getHighestPriority(stopNoteIcons[i], ts.severity);
+      stopNoteIcons[i] = maxOrNull(stopNoteIcons[i], ts.severity);
     }
   });
 
   var notes = <TS>{};
   Iterable<String> deviation = [];
 
-  if (isTrainType(type)) {
-    List<Set<String>?> stopNotesLowPriority = List.filled(journeyDetail.stop.length, null, growable: false);
-    List<Set<String>?> stopNotesNormalPriority = List.filled(journeyDetail.stop.length, null, growable: false);
-    var trainJourney = await trafikverket.getTrainJourney(
-        journeyNumber!, journeyDetail.stop.first.depDateTime!, journeyDetail.stop.last.arrDateTime!);
+  if (serviceJourney.isTrain) {
+    List<Set<String>?> stopNotesLowPriority = List.filled(allStops.length, null, growable: false);
+    List<Set<String>?> stopNotesNormalPriority = List.filled(allStops.length, null, growable: false);
+    var trainJourney = await Trafikverket.getTrainJourney(
+        serviceJourney.line.trainNumber!, allStops.first.plannedDepartureTime!, allStops.last.plannedArrivalTime!);
     if (trainJourney == null) {
-      normalTs = normalTs.followedBy([Note(0, 'low', 'Kunde inte hämta information från Trafikverket')]);
+      normalTs = normalTs.followedBy([Note('Kunde inte hämta information från Trafikverket')]);
     } else {
-      List<Stop> stops = journeyDetail.stop.toList(growable: false);
-
       List<JourneyPartNote> journeyPartNotes = [];
 
-      setTrainInfo(trainJourney, stops, stopNotesLowPriority, stopNotesNormalPriority);
+      setTrainInfo(trainJourney, allStops, stopNotesLowPriority, stopNotesNormalPriority);
 
-      for (int stop = 0; stop < journeyDetail.stop.length; stop++) {
+      for (int stop = 0; stop < allStops.length; stop++) {
         for (String description in stopNotesNormalPriority[stop] ?? {}) {
           if (journeyPartNotes.any((n) => n.match(description, stop))) continue;
 
           int end = stop;
           for (; stopNotesNormalPriority.tryElementAt(end + 1)?.contains(description) ?? false; end++) {}
 
-          journeyPartNotes.add(JourneyPartNote(description, stop, min(end, stops.length - 1), 'normal'));
+          journeyPartNotes.add(JourneyPartNote(description, stop, min(end, allStops.length - 1), Severity.normal));
         }
       }
 
-      for (int stop = 0; stop < journeyDetail.stop.length; stop++) {
+      for (int stop = 0; stop < allStops.length; stop++) {
         for (String description in stopNotesLowPriority[stop] ?? {}) {
           if (journeyPartNotes.any((n) => n.match(description, stop))) continue;
           if (description.contains('tannar i ') ||
@@ -226,7 +221,7 @@ Future<JourneyDetailWithTrafficSituations> getJourneyDetail(
           int end = stop;
           for (; stopNotesLowPriority.tryElementAt(end + 1)?.contains(description) ?? false; end++) {}
 
-          journeyPartNotes.add(JourneyPartNote(description, stop, min(end, stops.length - 1), 'low'));
+          journeyPartNotes.add(JourneyPartNote(description, stop, min(end, allStops.length - 1), Severity.low));
         }
       }
 
@@ -238,7 +233,7 @@ Future<JourneyDetailWithTrafficSituations> getJourneyDetail(
 
         String text = current.text;
 
-        while (current.start == next?.start && current.end == next?.end && current.priority == next?.priority) {
+        while (current.start == next?.start && current.end == next?.end && current.severity == next?.severity) {
           var lastChar = text.characters.last;
           if (lastChar == ',' || lastChar == '.') {
             text += ' ${next!.text}';
@@ -248,7 +243,7 @@ Future<JourneyDetailWithTrafficSituations> getJourneyDetail(
           next = journeyPartNotes.tryElementAt(++i + 1);
         }
 
-        combinedNotes.add(JourneyPartNote(text, current.start, current.end, current.priority));
+        combinedNotes.add(JourneyPartNote(text, current.start, current.end, current.severity));
       }
       journeyPartNotes = combinedNotes;
 
@@ -256,50 +251,47 @@ Future<JourneyDetailWithTrafficSituations> getJourneyDetail(
         String text;
 
         if (note.start == note.end) {
-          text = '${shortStationName(stops[note.start].name)}: ${note.text}';
+          text = '${shortStationName(allStops[note.start].stopPoint.name)}: ${note.text}';
           if (note.text != 'Spårändrat') {
-            stopNoteIcons[note.start] = getHighestPriority(stopNoteIcons[note.start], note.priority);
+            stopNoteIcons[note.start] = maxOrNull(stopNoteIcons[note.start], note.severity);
           }
-        } else if (note.start == 0 && note.end >= stops.length - 2) {
+        } else if (note.start == 0 && note.end >= allStops.length - 2) {
           text = note.text;
         } else if (note.text.contains('gäller') || note.text.contains('kontoladdning')) {
           text = note.text;
         } else {
-          text = '${shortStationName(stops[note.start].name)}–${shortStationName(stops[note.end].name)}: ${note.text}';
+          text = '${shortStationName(allStops[note.start].stopPoint.name)}–'
+              '${shortStationName(allStops[note.end].stopPoint.name)}: ${note.text}';
           if (note.text != 'Spårändrat') {
             for (int i = note.start; i <= note.end; i++) {
-              stopNoteIcons[i] = getHighestPriority(stopNoteIcons[i], note.priority);
+              stopNoteIcons[i] = maxOrNull(stopNoteIcons[i], note.severity);
             }
           }
         }
 
-        notes.add(Note(0, note.priority, text));
+        notes.add(Note(text, note.severity));
       }
 
       if (trainJourney.isNotEmpty) {
         notes
-          ..addAll(trainJourney.map((t) => t.booking).expand((d) => d.map((text) => Note(0, 'low', text))))
-          ..addAll(trainJourney.map((t) => t.service).expand((d) => d.map((text) => Note(0, 'low', text))))
-          ..addAll(trainJourney.map((t) => t.trainComposition).expand((d) => d.map((text) => Note(0, 'low', text))));
+          ..addAll(trainJourney.map((t) => t.booking).expand((d) => d.map((text) => Note(text))))
+          ..addAll(trainJourney.map((t) => t.service).expand((d) => d.map((text) => Note(text))))
+          ..addAll(trainJourney.map((t) => t.trainComposition).expand((d) => d.map((text) => Note(text))));
 
-        notes.addAll((await trafikverket.getTrainMessage(trainJourney.map((t) => t.locationSignature).toSet(),
-                stops.first.getDateTime(), stops.last.getDateTime())) ??
+        notes.addAll((await Trafikverket.getTrainMessage(
+                trainJourney.map((t) => t.locationSignature).toSet(), allStops.first.time, allStops.last.time)) ??
             <TrainMessage>[]);
 
         normalTs = normalTs.followedBy(notes);
       }
 
-      journeyDetail.stop = stops;
-
       deviation = journeyPartNotes
-          .where((note) => note.start == 0 && note.end >= stops.length - 2 && note.priority == 'normal')
+          .where((note) => note.start == 0 && note.end >= allStops.length - 2 && note.severity == Severity.normal)
           .map((note) => note.text);
     }
   }
 
-  await mgateExtra;
-
-  return JourneyDetailWithTrafficSituations(journeyDetail, severeTs.toSet(), normalTs.toSet(),
+  return ServiceJourneyDetailsWithTrafficSituations(serviceJourneysDetails, severeTs.toSet(), normalTs.toSet(),
       stopNoteIcons.map((s) => s != null ? getNoteIcon(s) : null), deviation);
 }
 
@@ -307,55 +299,82 @@ class JourneyPartNote {
   String text;
   int start;
   int end;
-  String priority;
+  Severity severity;
 
-  JourneyPartNote(this.text, this.start, this.end, this.priority);
+  JourneyPartNote(this.text, this.start, this.end, this.severity);
 
   bool match(String text, int stop) {
     return this.text == text && stop >= start && stop <= end;
   }
 }
 
-RenderObjectWidget journeyDetailList(JourneyDetail journeyDetail, Iterable<Icon?> stopNoteIcons,
-    {void Function(BuildContext, Stop)? onTap}) {
-  List<int> startOfLineIdx = journeyDetail.journeyId.map((j) => j.routeIdxFrom).toList(growable: false);
-  bool useHintColor = journeyDetail.stop.any((s) => (s.rtArrTime ?? s.rtDepTime) != null);
+RenderObjectWidget journeyDetailList(ServiceJourneyDetails serviceJourneyDetails, Iterable<Icon?> stopNoteIcons,
+    {void Function(BuildContext, Call)? onTap, void Function(BuildContext, Call)? onLongPress}) {
+  Iterable<Call> allStops = serviceJourneyDetails.allCalls!;
+
+  List<int> startOfServiceIndexes = serviceJourneyDetails.serviceJourneys
+      .map((serviceJourney) => serviceJourney.callsOnServiceJourney!.first.index)
+      .toList(growable: false);
+  bool useHintColor = allStops.any((s) => (s.estimatedDepartureTime ?? s.estimatedArrivalTime) != null);
+
+  Set<int> firstOrLastStopIndexes = serviceJourneyDetails.serviceJourneys
+      .map((serviceJourney) =>
+          [serviceJourney.callsOnServiceJourney!.first.index, serviceJourney.callsOnServiceJourney!.last.index])
+      .flattened
+      .toSet();
+
+  bool noteIconWithoutPlatform = IterableZip([allStops, stopNoteIcons]).every((pair) {
+    var (call, icon) = (pair[0] as Call, pair[1] as Icon?);
+    return icon == null || call.platform.isEmpty;
+  });
 
   return SliverPadding(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
     sliver: SeparatedSliverList(
-      itemCount: journeyDetail.stop.length,
+      itemCount: allStops.length,
       separatorBuilder: (context, i) => const Divider(height: 0),
       itemBuilder: (context, i) {
-        var stop = journeyDetail.stop.elementAt(i);
+        var stop = allStops.elementAt(i);
+        var isFirstOrLastStop = firstOrLastStopIndexes.contains(stop.index);
+        var isTrain = serviceJourneyDetails.serviceJourneys.first.isTrain;
         var row = InkWell(
             onTap: onTap != null
                 ? () => onTap(context, stop)
                 : () => Navigator.push(
                     context,
                     MaterialPageRoute(
-                        builder: (context) => DepartureBoardResultWidget(
-                            StopLocation.fromStop(stop), stop.getDateTime(), departureBoardOptions))),
+                        builder: (context) => DepartureBoardResultWidget(StopLocation.fromStopPoint(stop.stopPoint),
+                            stop.improvedArrivalTimeEstimation, departureBoardOptions))),
+            onLongPress: onLongPress != null
+                ? () => onLongPress(context, stop)
+                : () => Navigator.push<MapWidget>(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => MapWidget([MapJourney(serviceJourneyDetails: serviceJourneyDetails)],
+                            focusStopPoints: [stop.stopPoint.gid]))),
             child: stopRowFromStop(stop,
-                alightingOnly: stop.rtDepTime == null &&
-                    stop.rtArrTime != null &&
-                    !journeyDetail.journeyId.map((e) => e.routeIdxTo).contains(stop.routeIdx),
-                boardingOnly: stop.rtDepTime != null &&
-                    stop.rtArrTime == null &&
-                    !journeyDetail.journeyId.map((e) => e.routeIdxFrom).contains(stop.routeIdx) &&
-                    journeyDetail.stop.elementAt(i - 1).rtDepTime != null,
+                alightingOnly: stop.platform.isEmpty &&
+                    !stop.isCancelled &&
+                    !isFirstOrLastStop &&
+                    !isTrain &&
+                    (validTimeInterval == null ||
+                        (stop.plannedDepartureTime?.isBefore(validTimeInterval!.validUntil) ?? true)),
+                boardingOnly: stop.arrivalTime == null && !stop.isCancelled && !isFirstOrLastStop && !isTrain,
                 noteIcon: stopNoteIcons.elementAt(i),
+                noteIconWithoutPlatform: noteIconWithoutPlatform,
                 constraints: const BoxConstraints(minHeight: 32),
                 useHintColor: useHintColor));
-        if (startOfLineIdx.length > 1 && startOfLineIdx.contains(stop.routeIdx)) {
+        if (startOfServiceIndexes.length > 1 && startOfServiceIndexes.contains(stop.index)) {
+          var serviceJourney =
+              serviceJourneyDetails.serviceJourneys.elementAt(startOfServiceIndexes.indexOf(stop.index));
           var text = Padding(
               padding: const EdgeInsets.all(15),
               child: Text(
                   (StringBuffer(i == 0 ? 'Börjar' : 'Fortsätter')
                         ..write(' som linje ')
-                        ..write(getValueAtRouteIdx(journeyDetail.journeyName, stop.routeIdx).name)
+                        ..write(serviceJourney.line.name)
                         ..write(' mot ')
-                        ..write(getValueAtRouteIdx(journeyDetail.direction, stop.routeIdx).direction))
+                        ..write(serviceJourney.direction))
                       .toString(),
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Theme.of(context).hintColor)));
@@ -367,13 +386,13 @@ RenderObjectWidget journeyDetailList(JourneyDetail journeyDetail, Iterable<Icon?
   );
 }
 
-class JourneyDetailWithTrafficSituations {
-  JourneyDetail journeyDetail;
+class ServiceJourneyDetailsWithTrafficSituations {
+  ServiceJourneyDetails serviceJourneyDetails;
   Iterable<TS> importantTs;
   Iterable<TS> normalTs;
   Iterable<Icon?> stopNoteIcons;
   Iterable<String> deviation;
 
-  JourneyDetailWithTrafficSituations(
-      this.journeyDetail, this.importantTs, this.normalTs, this.stopNoteIcons, this.deviation);
+  ServiceJourneyDetailsWithTrafficSituations(
+      this.serviceJourneyDetails, this.importantTs, this.normalTs, this.stopNoteIcons, this.deviation);
 }

@@ -10,7 +10,7 @@ import 'package:url_launcher/url_launcher_string.dart';
 
 import 'favorites.dart';
 import 'home_widget.dart';
-import 'reseplaneraren.dart';
+import 'network/planera_resa.dart';
 import 'utils.dart';
 
 late Box mainBox;
@@ -23,8 +23,6 @@ bool useEdgeToEdge = true;
 bool supportVttogo = false;
 
 int? androidSdkVersion;
-
-PageTransitionsTheme? _transitionsTheme;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,13 +43,6 @@ void main() async {
       useEdgeToEdge = androidSdkVersion! >= 29;
     }
   }
-  if (kIsWeb || !Platform.isIOS) {
-    _transitionsTheme = const PageTransitionsTheme(
-      builders: <TargetPlatform, PageTransitionsBuilder>{
-        TargetPlatform.android: ZoomPageTransitionsBuilder(),
-      },
-    );
-  }
   Intl.defaultLocale = 'sv_SE';
   runApp(const MyApp());
 }
@@ -59,7 +50,7 @@ void main() async {
 const Color primaryColor = Color.fromRGBO(0, 121, 180, 1);
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -81,12 +72,10 @@ class MyApp extends StatelessWidget {
         supportedLocales: const [
           Locale('sv'),
         ],
-        theme: ThemeData(primarySwatch: createMaterialColor(primaryColor), pageTransitionsTheme: _transitionsTheme),
+        theme: ThemeData(primarySwatch: createMaterialColor(primaryColor)),
         darkTheme: ThemeData(
           brightness: Brightness.dark,
           primaryColor: primaryColor,
-          toggleableActiveColor: primaryColor,
-          pageTransitionsTheme: _transitionsTheme,
           elevatedButtonTheme: ElevatedButtonThemeData(
               style: ButtonStyle(foregroundColor: MaterialStateProperty.all<Color>(Colors.white))),
           appBarTheme: const AppBarTheme(

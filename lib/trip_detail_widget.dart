@@ -1,103 +1,137 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:resecentrum/main.dart';
 
 import 'extensions.dart';
 import 'journey_detail_widget.dart';
+import 'main.dart';
 import 'map_widget.dart';
-import 'options_panel.dart';
-import 'reseplaneraren.dart';
+import 'network/planera_resa.dart';
 import 'trip_result_widget.dart';
 import 'utils.dart';
 
-class TripDetailWidget extends StatelessWidget {
-  final Trip _trip;
-  final ChangeMarginGetter _tripOptions;
+const Set<JourneyDetailsIncludeType> journeyDetailsIncludes = {
+  JourneyDetailsIncludeType.serviceJourneyCalls,
+  JourneyDetailsIncludeType.serviceJourneyCoordinates,
+  JourneyDetailsIncludeType.links,
+};
 
-  TripDetailWidget(this._trip, this._tripOptions, {Key? key}) : super(key: key) {
-    _streamController.add(_trip);
+class TripDetailsWidget extends StatelessWidget {
+  Journey get journey => _journeys[journeyIndex];
+
+  set journey(Journey value) => _journeys[journeyIndex] = value;
+
+  final List<Journey> _journeys;
+  final int journeyIndex;
+
+  final StreamController<JourneyDetails> _streamController = StreamController.broadcast();
+
+  Future<void> _handleRefresh() async => _refreshJourney();
+
+  TripDetailsWidget(this._journeys, this.journeyIndex, {super.key}) {
+    _updateJourney();
   }
 
-  Iterable<Widget> _legWidgets(BuildContext context) {
+  Future<void> _updateJourney() async {
+    try {
+      var journeyDetails =
+          await PlaneraResa.journeyDetails(journey.detailsReference, journeyDetailsIncludes).suppress() ??
+              await PlaneraResa.journeyDetails(
+                  (journey = await PlaneraResa.reconstructJourney(journey.reconstructionReference)).detailsReference,
+                  journeyDetailsIncludes);
+
+      _streamController.add(journeyDetails);
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        print(error);
+        print(stackTrace);
+      }
+      _streamController.addError(error);
+    }
+  }
+
+  Iterable<Widget> _legWidgets(JourneyDetails journeyDetails, BuildContext context) {
     List<Widget> legs = [];
 
-    var bgLuminance = Theme.of(context).cardColor.computeLuminance();
+    var bgColor = Theme.of(context).cardColor;
 
-    for (int i = 0; i < _trip.leg.length; i++) {
-      Leg leg = _trip.leg.elementAt(i);
-      Leg? before = _trip.leg.tryElementAt(i - 1);
+    for (var (i, (before, leg, after)) in journey.journeyLegTriplets.indexed) {
+      if (leg is TripLeg) {
+        var originSet = leg.origin.notes.toSet();
+        var destinationSet = leg.destination.notes.toSet();
 
-      var originSet = leg.origin.notes.toSet();
-      var destinationSet = leg.destination.notes.toSet();
+        if (leg.origin.notes.isNotEmpty && leg.destination.notes.isNotEmpty) {
+          var intersection = originSet.intersection(destinationSet);
 
-      if (leg.origin.notes.isNotEmpty && leg.destination.notes.isNotEmpty) {
-        var intersection = originSet.intersection(destinationSet);
+          var newLegNotes = leg.notes.toSet();
+          newLegNotes.addAll(intersection);
+          leg.notes = newLegNotes;
 
-        var newLegNotes = leg.notes.toList();
-        newLegNotes.addAll(intersection);
-        leg.notes = newLegNotes;
+          originSet.removeAll(intersection);
+          destinationSet.removeAll(intersection);
+        }
 
-        originSet.removeAll(intersection);
-        destinationSet.removeAll(intersection);
+        leg.origin.notes = originSet;
+        leg.destination.notes = destinationSet;
       }
 
-      leg.origin.notes = originSet;
-      leg.destination.notes = destinationSet;
+      if (leg is TripLeg && before is TripLeg) {
+        void openMap() {
+          Navigator.push(context, MaterialPageRoute(builder: (context) {
+            return MapWidget(mapJourneys(journeyDetails), focusStopPoints: [leg.origin.stopPoint.gid]);
+          }));
+        }
 
-      if (leg.journeyDetailRef != null && before?.journeyDetailRef != null) {
         legs.add(Card(
           margin: const EdgeInsets.all(0),
           child: InkWell(
-            onTap: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) {
-                return MapWidget(_mapJourneys, focusStops: [leg.origin.id!]);
-              }));
-            },
+            onTap: openMap,
+            onLongPress: openMap,
             child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: _walk('Byte', _trip.leg.elementAt(i - 1).destination.getDateTime(), leg.origin.getDateTime(),
-                    context, true, before, leg, null)),
+                child: _walk('Byte', before.arrivalTime, leg.departureTime, context, true, before, leg, null)),
           ),
         ));
       }
-      if (leg.type == 'WALK' && before?.type == 'WALK') continue;
-      legs.add(_legCard(leg, i, context, bgLuminance));
+
+      legs.add(_legCard(leg, i, context, bgColor, before, after, journeyDetails));
     }
     return legs;
   }
-
-  final StreamController<Trip> _streamController = StreamController();
-
-  Future<void> _handleRefresh() async => _updateTrip();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
         appBar: AppBar(
-          title: tripTitle(_trip.leg.first.origin.name, _trip.leg.last.destination.name),
+          title: tripTitle(journey.firstJourneyLeg.originName, journey.lastJourneyLeg.destinationName),
           actions: [
-            if (supportVttogo)
+            if (supportVttogo && journey.tripLegs.isNotEmpty)
               PopupMenuButton(
-                  onSelected: (_) => buyTicket(context, _trip.leg.firstWhere((l) => l.type != 'WALK').origin.id!,
-                      _trip.leg.lastWhere((l) => l.type != 'WALK').destination.id!),
+                  onSelected: (_) => buyTicket(context, journey.tripLegs.first.origin.stopPoint.gid,
+                      journey.tripLegs.last.destination.stopPoint.gid),
                   itemBuilder: (BuildContext context) => [
                         const PopupMenuItem(
-                          value: 0,
+                          value: MenuAction.buyTicket,
                           child: ListTile(
                               leading: Icon(Icons.confirmation_num),
                               title: Text('Köp enkelbiljett'),
                               visualDensity: VisualDensity.compact),
                         )
                       ]),
-            IconButton(
-                onPressed: () {
-                  Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
-                    return MapWidget(_mapJourneys);
-                  }));
-                },
-                icon: const Icon(Icons.map))
+            StreamBuilder<JourneyDetails>(
+                stream: _streamController.stream,
+                builder: (context, snapshot) {
+                  return IconButton(
+                      onPressed: () {
+                        Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
+                          return MapWidget(snapshot.hasData
+                              ? mapJourneys(snapshot.data!)
+                              : [MapJourney(journeyDetailsReference: journey.detailsReference)]);
+                        }));
+                      },
+                      icon: const Icon(Icons.map));
+                })
           ],
         ),
         backgroundColor: cardBackgroundColor(context),
@@ -105,16 +139,21 @@ class TripDetailWidget extends StatelessWidget {
           MediaQuery.of(context).systemGestureInsets,
           child: RefreshIndicator(
               onRefresh: () => _handleRefresh(),
-              child: StreamBuilder<Trip>(
+              child: StreamBuilder<JourneyDetails>(
                 stream: _streamController.stream,
-                builder: (context, tripSnapshot) {
-                  if (tripSnapshot.connectionState == ConnectionState.waiting) return loadingPage();
-                  var widgets = _legWidgets(context);
+                builder: (context, journeyDetailsSnapshot) {
+                  if (journeyDetailsSnapshot.connectionState == ConnectionState.waiting) return loadingPage();
+                  if (!journeyDetailsSnapshot.hasData) {
+                    return ErrorPage(_updateJourney, error: journeyDetailsSnapshot.error);
+                  }
+                  var widgets = _legWidgets(journeyDetailsSnapshot.data!, context);
+                  var zoneWidget = _zoneWidget(journeyDetailsSnapshot.data!, context);
+
                   return CustomScrollView(
                     slivers: [
-                      if (!_trip.leg.first.origin.dateTime.isSameDayAs(DateTime.now()) &&
-                          !_trip.leg.last.destination.dateTime.isSameDayAs(DateTime.now()))
-                        dateBar(_trip.leg.first.origin.dateTime, showTime: false, margin: 24),
+                      if (!journey.firstJourneyLeg.plannedDepartureTime.isSameDayAs(DateTime.now()) &&
+                          !journey.lastJourneyLeg.plannedArrivalTime.isSameDayAs(DateTime.now()))
+                        dateBar(journey.firstJourneyLeg.plannedDepartureTime, showTime: false, margin: 24),
                       SliverSafeArea(
                         sliver: SliverPadding(
                           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
@@ -124,7 +163,9 @@ class TripDetailWidget extends StatelessWidget {
                             separatorBuilder: (context, i) => const Divider(),
                           ),
                         ),
-                      )
+                        bottom: false,
+                      ),
+                      SliverSafeArea(sliver: SliverToBoxAdapter(child: zoneWidget))
                     ],
                   );
                 },
@@ -132,92 +173,96 @@ class TripDetailWidget extends StatelessWidget {
         ));
   }
 
-  List<MapJourney> get _mapJourneys => _trip.leg
-      .map((l) => l.journeyDetailRef == null
-          ? MapJourney(walk: true, geometry: l.cachedGeometry, geometryRef: l.geometryRef)
-          : MapJourney(
-              journeyDetailRef: JourneyDetailRef.fromLeg(l),
-              journeyPart: JourneyPart(l.origin.routeIdx!, l.destination.routeIdx!)))
+  static List<MapJourney> mapJourneys(JourneyDetails journeyDetails) => journeyDetails.allJourneyLegs
+      .map((leg) => switch (leg) {
+            TripLegDetails leg => MapJourney(
+                serviceJourneyDetails: ServiceJourneyDetails.fromTripLegDetails(leg),
+                journeyPart: JourneyPart(leg.origin.index, leg.destination.index)),
+            Link link => MapJourney(link: link),
+            TripLeg _ => MapJourney(),
+          })
       .toList(growable: false);
 
-  Widget _legCard(Leg leg, int i, BuildContext context, double bgLuminance) {
+  Widget _zoneWidget(JourneyDetails journeyDetails, BuildContext context) {
+    var zones = journeyDetails.tariffZones.map((e) => e.name).toList(growable: false)..sort();
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: Center(child: Text(zones.joinNaturally(), style: TextStyle(color: Theme.of(context).hintColor))),
+    );
+  }
+
+  Widget _legCard(JourneyLeg leg, int i, BuildContext context, Color bgColor, JourneyLeg? before, JourneyLeg? after,
+      JourneyDetails journeyDetails) {
+    void openLinkOnMap() {
+      Navigator.push(context, MaterialPageRoute(builder: (context) {
+        var journeys = mapJourneys(journeyDetails);
+        journeys[i].focus = true;
+        return MapWidget(journeys);
+      }));
+    }
+
     return Card(
         margin: EdgeInsets.zero,
         child: InkWell(
-          onTap: () {
-            if (leg.type == 'WALK') {
-              Navigator.push(context, MaterialPageRoute(builder: (context) {
-                var journeys = _mapJourneys;
-                for (int j = i; j < _trip.leg.length; j++) {
-                  if (!journeys[j].walk) break;
-                  journeys[j].focus = true;
-                }
-                return MapWidget(journeys);
-              }));
-            }
-            if (leg.journeyDetailRef == null) return;
-            Navigator.push(context, MaterialPageRoute(builder: (context) {
-              return JourneyDetailWidget(
-                  leg.journeyDetailRef!,
-                  leg.sname ?? leg.name,
-                  leg.fgColor ?? Colors.white,
-                  leg.bgColor ?? Colors.black,
-                  leg.direction ?? leg.name,
-                  leg.journeyId!,
-                  leg.type,
-                  leg.name,
-                  leg.journeyNumber,
-                  leg.origin.id!,
-                  leg.origin.dateTime);
-            }));
+          onTap: () => switch (leg) {
+            Link() => openLinkOnMap(),
+            TripLeg() => () {
+                var tripLegIndex = journeyDetails.tripLegs.indexWhere((l) => l.journeyLegIndex == leg.journeyLegIndex);
+                Navigator.push(context, MaterialPageRoute(builder: (context) {
+                  return JourneyDetailsWidget(TripLegDetailsRef(journey, leg.serviceJourney, tripLegIndex));
+                }));
+              }(),
           },
-          onLongPress: leg.journeyDetailRef == null
-              ? null
-              : () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) {
-                    var journeys = _mapJourneys;
-                    journeys[i].focus = true;
-                    return MapWidget(journeys);
-                  }));
-                },
+          onLongPress: () => switch (leg) {
+            Link() => openLinkOnMap(),
+            TripLeg() => Navigator.push(context, MaterialPageRoute(builder: (context) {
+                var journeys = mapJourneys(journeyDetails);
+                journeys[i].focus = true;
+                return MapWidget(journeys);
+              })),
+          },
           child: Padding(
             padding: const EdgeInsets.all(12),
-            child: leg.type == 'WALK'
-                ? _walkFromLeg(leg, _trip.leg.tryElementAt(i - 1), nextLeg(_trip.leg, i), context)
-                : _normalLeg(leg, context, bgLuminance),
+            child: leg is Link
+                ? _walkFromLeg(leg, before, after, context)
+                : _normalLeg(leg as TripLeg, context, bgColor, journeyDetails),
           ),
         ));
   }
 
-  Widget _normalLeg(Leg leg, BuildContext context, double bgLuminance) {
+  Widget _normalLeg(TripLeg leg, BuildContext context, Color bgColor, JourneyDetails journeyDetails) {
+    var tripLegDetails = journeyDetails.tripLegs.firstWhere((l) => l.journeyLegIndex == leg.journeyLegIndex);
+
+    var line = leg.serviceJourney.line;
+
     return Column(children: [
       Row(
         children: [
           const SizedBox(width: 16),
-          lineIconFromLeg(leg, bgLuminance, context),
+          lineIconFromLine(line, bgColor, context, shortTrainName: false),
           const SizedBox(width: 16),
           Expanded(
-              child: highlightFirstPart(leg.direction ?? '',
+              child: highlightFirstPart(leg.serviceJourney.direction,
                   style: const TextStyle(fontWeight: FontWeight.bold), textScaleFactor: 1.1)),
-          accessibilityIcon(leg.accessibility, leg.destination.rtDateTime ?? leg.origin.rtDateTime,
-              margin: const EdgeInsets.fromLTRB(8, 0, 0, 0)),
+          accessibilityIcon(line.isWheelchairAccessible, leg.estimatedDepartureTime ?? leg.estimatedArrivalTime,
+              margin: const EdgeInsets.only(left: 8)),
         ],
       ),
       displayTSs(leg.notes),
       leg.notes.isEmpty ? const SizedBox(height: 16) : const Divider(),
-      _stopHeader(leg.origin),
+      _stopHeader(leg, tripLegDetails.origin, true),
       displayTSs(leg.origin.notes),
       const Divider(),
-      _legDetail(leg, context),
+      _legDetail(tripLegDetails, context),
       const Divider(),
-      _stopHeader(leg.destination),
+      _stopHeader(leg, tripLegDetails.destination, false),
       displayTSs(leg.destination.notes)
     ]);
   }
 
-  Widget _legDetail(Leg leg, BuildContext context) {
-    Duration duration = leg.destination.getDateTime().difference(leg.origin.getDateTime());
-    int numberOfStops = leg.destination.routeIdx! - leg.origin.routeIdx!;
+  Widget _legDetail(TripLegDetails leg, BuildContext context) {
+    Duration duration = leg.destination.arrivalTime!.difference(leg.origin.departureTime!);
+    int numberOfStops = leg.destination.index - leg.origin.index;
     return Padding(
       padding: const EdgeInsets.all(5),
       child: Row(
@@ -225,7 +270,7 @@ class TripDetailWidget extends StatelessWidget {
           const SizedBox(width: 74),
           Text(
               '${getDurationString(duration)}, $numberOfStops ' +
-                  (isTrainType(leg.type)
+                  (leg.serviceJourneys.first.line.isTrain
                       ? numberOfStops > 1
                           ? 'stationer'
                           : 'station'
@@ -238,22 +283,25 @@ class TripDetailWidget extends StatelessWidget {
     );
   }
 
-  Widget _walkFromLeg(Leg leg, Leg? before, Leg? after, BuildContext context) {
-    bool transfer = before != null && after != null ? before.destination.name == after.origin.name : false;
-    return _walk(transfer ? 'Byte' : leg.name, transfer ? before.destination.getDateTime() : leg.origin.getDateTime(),
-        transfer ? after.origin.getDateTime() : leg.destination.getDateTime(), context, transfer, before, after, leg);
+  Widget _walkFromLeg(Link link, JourneyLeg? before, JourneyLeg? after, BuildContext context) {
+    bool transfer =
+        before is TripLeg && after is TripLeg && before.destination.stopPoint.name == after.origin.stopPoint.name;
+    return _walk(transfer ? 'Byte' : 'Gå', transfer ? before.arrivalTime : link.departureTime,
+        transfer ? after.departureTime : link.arrivalTime, context, transfer, before, after, link);
   }
 
-  Widget _walk(String text, DateTime start, DateTime end, BuildContext context, bool transfer, Leg? before, Leg? after,
-      Leg? leg) {
-    bool walkBetweenStops = before != null && after != null && before.journeyId != null && after.journeyId != null;
-    var duration = walkBetweenStops
-        ? after.origin.getDateTime().difference(before.destination.getDateTime())
-        : end.difference(start);
+  Widget _walk(String text, DateTime start, DateTime end, BuildContext context, bool transfer, JourneyLeg? before,
+      JourneyLeg? after, Link? link) {
+    bool walkBetweenStops = before is TripLeg && after is TripLeg;
+    var duration = walkBetweenStops ? after.departureTime.difference(before.arrivalTime) : end.difference(start);
 
     IconData icon = transfer ? Icons.transfer_within_a_station : Icons.directions_walk;
 
-    Future<double?> walkDistance = _getWalkDistance(leg);
+    int? walkDistance = link?.distanceInMeters;
+    var connectionValidation = getConnectionValidation(before, link, after);
+
+    if (connectionValidation == ConnectionValidation.mediumRisk && !transfer) icon = Icons.directions_run;
+    if (connectionValidation == ConnectionValidation.highRisk) icon = Icons.warning;
 
     return Column(
       children: [
@@ -262,44 +310,37 @@ class TripDetailWidget extends StatelessWidget {
             Container(
                 constraints: const BoxConstraints(minWidth: 64),
                 margin: const EdgeInsets.fromLTRB(5, 0, 10, 0),
-                child: FutureBuilder<double?>(
-                    future: walkDistance,
-                    builder: (context, distance) {
-                      var walkSpeed = _walkSpeed(distance.data, duration);
-                      if (walkSpeed > 6 && !transfer) icon = Icons.directions_run;
-                      if (walkSpeed > 15 || walkSpeed < 0) icon = Icons.warning;
-                      return iconAndText(icon, text, gap: 10, expand: false);
-                    })),
+                child: iconAndText(icon, text, gap: 10, expand: false)),
             Text(getDurationString(duration), style: TextStyle(color: Theme.of(context).hintColor)),
-            FutureBuilder<double?>(
-                future: walkDistance,
-                builder: (context, distance) {
-                  if (!distance.hasData || distance.data == null) return Container();
-                  return Text(', ${distance.data!.round()} m', style: TextStyle(color: Theme.of(context).hintColor));
-                })
+            if (walkDistance != null) Text(', $walkDistance m', style: TextStyle(color: Theme.of(context).hintColor)),
           ],
         ),
-        if (duration.inMinutes >= longWaitingTime)
+        if (duration.inMinutes >= longWaitingTime && before != null && after != null)
           Column(
             children: [
               const Divider(),
               Padding(
-                padding: const EdgeInsets.fromLTRB(5, 0, 0, 0),
+                padding: const EdgeInsets.only(left: 5),
                 child: iconAndText(Icons.info_outline, 'Längre uppehåll', gap: 10),
               ),
             ],
           ),
-        if (before != null && after != null && !before.cancelled && !after.cancelled)
-          FutureBuilder<Widget?>(
-            future: _walkValidation(walkDistance, duration),
-            builder: (context, result) {
-              if (!result.hasData || result.data == null) return Container();
+        if (before is TripLeg &&
+            after is TripLeg &&
+            !before.isCancelled &&
+            !after.isCancelled &&
+            !before.destination.isCancelled &&
+            !after.origin.isCancelled)
+          Builder(
+            builder: (context) {
+              var widget = getConnectionValidationWidget(connectionValidation, gap: 10);
+              if (widget == null) return Container();
               return Column(
                 children: [
                   const Divider(),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(5, 0, 0, 0),
-                    child: result.data!,
+                    padding: const EdgeInsets.only(left: 5),
+                    child: widget,
                   ),
                 ],
               );
@@ -309,69 +350,82 @@ class TripDetailWidget extends StatelessWidget {
     );
   }
 
-  double _walkSpeed(double? walkDistance, Duration duration) {
-    return 3.6 * (walkDistance ?? 0) / duration.inSeconds; // km/h
-  }
-
-  Future<Widget?> _walkValidation(Future<double?> walkDistance, Duration duration) async {
-    var walkSpeed = _walkSpeed(await walkDistance, duration);
-    const String text = 'Risk för att missa anslutningen';
-    if (duration <= Duration.zero || walkSpeed > 10) {
-      return iconAndText(Icons.warning, text, gap: 10, iconColor: Colors.red);
-    }
-    if (walkSpeed > 5 || duration <= Duration(minutes: (_tripOptions.changeMarginMinutes ?? 5) ~/ 2)) {
-      return iconAndText(Icons.error, text, gap: 10, iconColor: Colors.orange);
-    }
-    return null;
-  }
-
-  Widget _stopHeader(TripLocation location) {
+  Widget _stopHeader(TripLeg leg, Call call, bool origin) {
     return stopRow(
-        simpleTimeWidget(location.dateTime, getTripLocationDelay(location), location.cancelled, location.state),
-        location.name,
-        location.track,
-        location.rtTrack);
+        origin
+            ? simpleTimeWidget(leg.plannedDepartureTime, leg.departureDelay,
+                leg.origin.isCancelled || call.isDepartureCancelled, leg.depState.state)
+            : simpleTimeWidget(leg.plannedArrivalTime, leg.arrivalDelay,
+                leg.destination.isCancelled || call.isArrivalCancelled, leg.arrState.state),
+        origin ? leg.origin.stopPoint.name : leg.destination.stopPoint.name,
+        origin ? leg.origin.stopPoint.plannedPlatform : leg.destination.stopPoint.plannedPlatform,
+        origin ? leg.origin.stopPoint.estimatedPlatform : leg.destination.stopPoint.estimatedPlatform);
   }
 
-  Future<double?> _getWalkDistance(Leg? leg) async {
-    if (leg == null) return null;
-    var geometry = await leg.geometry();
-    if (geometry == null) return null;
-    double distance = 0;
-    Point? previous;
-    for (var point in geometry) {
-      if (previous != null) {
-        distance += Geolocator.distanceBetween(previous.lat, previous.lon, point.lat, point.lon);
-      }
-      previous = point;
-    }
-    int i = _trip.leg.indexOf(leg);
-    Leg? after = _trip.leg.tryElementAt(i + 1);
-    if (after?.type == 'WALK') distance += (await _getWalkDistance(after)) ?? 0;
-    return distance;
+  void _refreshJourney() async {
+    var journeyReq = PlaneraResa.reconstructJourney(journey.reconstructionReference);
+    var journeyDetailsReq = PlaneraResa.journeyDetails(journey.detailsReference, journeyDetailsIncludes).suppress();
+
+    journey = await journeyReq;
+    await setTripLegTrainInfo([journey]);
+    var journeyDetails =
+        await journeyDetailsReq ?? await PlaneraResa.journeyDetails(journey.detailsReference, journeyDetailsIncludes);
+    _streamController.add(journeyDetails);
+  }
+}
+
+double? getWalkSpeed(int? walkDistance, Duration duration) {
+  if (walkDistance == null || duration == Duration.zero) return null;
+  return 3.6 * walkDistance / duration.inSeconds; // km/h
+}
+
+enum ConnectionValidation { valid, lowRisk, mediumRisk, highRisk }
+
+ConnectionValidation getConnectionValidation(JourneyLeg? before, Link? link, JourneyLeg? after) {
+  if (link != null && link is! ConnectionLink) return ConnectionValidation.valid;
+
+  var duration = before is TripLeg && after is TripLeg
+      ? after.departureTime.difference(before.arrivalTime)
+      : link?.duration ?? Duration.zero;
+
+  var walkSpeed = getWalkSpeed(link?.distanceInMeters, duration);
+
+  var likelyTripToTripTransfer = before is TripLeg &&
+      after is TripLeg &&
+      before.plannedArrivalTime == after.departureTime &&
+      stopAreaFromStopPoint(before.destination.stopPoint.gid) == stopAreaFromStopPoint(after.origin.stopPoint.gid) &&
+      !after.isRiskOfMissingConnection;
+
+  if (duration < Duration.zero || walkSpeed != null && walkSpeed > 10) return ConnectionValidation.highRisk;
+
+  if (!likelyTripToTripTransfer && (duration == Duration.zero || walkSpeed != null && walkSpeed > 6)) {
+    return ConnectionValidation.mediumRisk;
   }
 
-  void _updateTrip() async {
-    _trip.leg = _trip.leg.toList(growable: false);
-
-    await Future.wait(_trip.leg
-        .where((leg) => leg.journeyDetailRef != null)
-        .map((leg) => getJourneyDetailExtra(JourneyDetailRef.fromLeg(leg)).then((jt) {
-              if (jt == null) return;
-
-              Stop? origin = jt.stop.firstWhere((s) => s.routeIdx == leg.origin.routeIdx!);
-              leg.origin.rtDateTime = origin.rtDepTime ?? origin.rtArrTime;
-              leg.origin.rtTrack = origin.rtTrack;
-              leg.origin.cancelled = origin.depCancelled;
-              leg.origin.state = origin.depState.state;
-
-              Stop? destination = jt.stop.firstWhere((s) => s.routeIdx == leg.destination.routeIdx!);
-              leg.destination.rtDateTime = destination.rtArrTime ?? destination.rtDepTime;
-              leg.destination.rtTrack = destination.rtTrack;
-              leg.destination.cancelled = destination.arrCancelled;
-              leg.destination.state = destination.arrState.state;
-            })));
-
-    _streamController.add(_trip);
+  if (after is TripLeg && after.isRiskOfMissingConnection && before is TripLeg && before.riskOfMissingConnectionNote) {
+    return ConnectionValidation.lowRisk;
   }
+
+  if (!likelyTripToTripTransfer &&
+      before is TripLeg &&
+      after is TripLeg &&
+      !before.plannedArrivalTime.isBefore(after.departureTime)) {
+    return ConnectionValidation.lowRisk;
+  }
+
+  return ConnectionValidation.valid;
+}
+
+Widget? getConnectionValidationWidget(ConnectionValidation connectionValidation,
+    {double gap = 5, Color? textColor, bool specificConnection = true}) {
+  String text = 'att missa anslutning${specificConnection ? 'en' : ''}';
+  return switch (connectionValidation) {
+    ConnectionValidation.lowRisk =>
+      iconAndText(Icons.error, 'Risk $text', gap: gap, iconColor: Colors.orange, textColor: textColor),
+    ConnectionValidation.mediumRisk =>
+      iconAndText(Icons.warning, 'Stor risk $text', gap: gap, iconColor: Colors.red, textColor: textColor),
+    ConnectionValidation.highRisk =>
+      iconAndText(Icons.warning, 'Mycket stor risk $text', gap: gap, iconColor: Colors.red, textColor: textColor),
+    ConnectionValidation.valid => null,
+  };
 }

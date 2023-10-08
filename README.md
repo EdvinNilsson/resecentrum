@@ -19,12 +19,14 @@ The app is currently available on Google Play and is only available in Swedish.
 
 ## Build notes
 
-Run ```flutter pub run build_runner build``` for code generation.
+Run ```flutter pub get``` to get dependencies.
+
+Run ```dart run build_runner build``` for code generation.
 
 When building, assign API keys with ```--dart-define```.  
 For example ```flutter build apk --dart-define AUTH_KEY=<insert-auth-key> --dart-define AUTH_SECRET=<insert-auth-secret> --dart-define TRAFIKVERKET_KEY=<insert-api-key>```.
 
-You can get API keys from [Västtrafik's developer portal](https://developer.vasttrafik.se/) by creating an application that subscribes to both `Reseplaneraren v2` and `TrafficSituations v1`.
+You can get API keys from [Västtrafik's developer portal](https://developer.vasttrafik.se/) by creating an application that subscribes to both `Planera Resa v4` and `TrafficSituations v1`.
 To get additional information about train journeys, you need an API key from [Trafikverket](https://api.trafikinfo.trafikverket.se/).
 
 <sub>Google Play and the Google Play logo are trademarks of Google LLC.</sub>

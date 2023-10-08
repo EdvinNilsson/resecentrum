@@ -1,28 +1,34 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:collection/collection.dart';
 import 'package:diffutil_sliverlist/diffutil_sliverlist.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:maplibre_gl/mapbox_gl.dart';
+import 'package:rxdart/subjects.dart';
 
 import 'extensions.dart';
 import 'journey_detail_widget.dart';
 import 'main.dart';
 import 'map_widget.dart';
+import 'network/planera_resa.dart';
+import 'network/traffic_situations.dart';
+import 'network/trafikverket.dart';
+import 'network/vehicle_positions.dart';
 import 'options_panel.dart';
-import 'reseplaneraren.dart';
-import 'trafikverket.dart';
 import 'utils.dart';
-import 'vehicle_positions_service.dart';
 
 class DepartureBoardResultWidget extends StatefulWidget {
   final Location _location;
-  final StopLocation? direction;
-  final DateTime? _dateTime;
+  final StopLocation? _direction;
+  DateTime? _dateTime;
   final DepartureBoardOptions _departureBoardOptions;
+  final DepartureBoardState _state = DepartureBoardState();
 
-  const DepartureBoardResultWidget(this._location, this._dateTime, this._departureBoardOptions,
-      {this.direction, Key? key})
-      : super(key: key);
+  DepartureBoardResultWidget(this._location, this._dateTime, this._departureBoardOptions,
+      {StopLocation? direction, super.key})
+      : _direction = direction;
 
   @override
   State<DepartureBoardResultWidget> createState() => _DepartureBoardResultWidgetState();
@@ -30,18 +36,21 @@ class DepartureBoardResultWidget extends StatefulWidget {
 
 class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget> with WidgetsBindingObserver {
   Timer? _timer;
+  final GlobalKey<RefreshIndicatorState> _refreshKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance!.addObserver(this);
+    WidgetsBinding.instance.addObserver(this);
     _initTimer(updateIntermittently: false);
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance!.removeObserver(this);
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
+    _departureStreamController.close();
+    _trafficSituationSubject.close();
     super.dispose();
   }
 
@@ -49,7 +58,9 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed && _timer?.isActive == true) {
       _timer?.cancel();
-    } else if (state == AppLifecycleState.resumed && _timer?.isActive == false) {
+    } else if (state == AppLifecycleState.resumed &&
+        _timer?.isActive == false &&
+        ModalRoute.of(context)?.isCurrent == true) {
       _initTimer();
     }
   }
@@ -61,7 +72,8 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
     if (updateIntermittently) _updateDepartureBoard(addOnlyOnce: true, ignoreError: true);
   }
 
-  final StreamController<DepartureBoardWithTrafficSituations> _departureStreamController = StreamController.broadcast();
+  final StreamController<Iterable<Departure>> _departureStreamController = StreamController.broadcast();
+  final BehaviorSubject<Iterable<TS>> _trafficSituationSubject = BehaviorSubject();
 
   Future<void> _handleRefresh() async => _updateDepartureBoard(addOnlyOnce: true, ignoreError: true);
 
@@ -71,69 +83,90 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
     return Scaffold(
         appBar: AppBar(
             title: StreamBuilder(stream: _departureStreamController.stream, builder: (context, snapshot) => _title()),
-            actions: supportShortcuts
-                ? <Widget>[
-                    PopupMenuButton(
-                        onSelected: (_) => _createShortcut(),
-                        itemBuilder: (BuildContext context) => [
-                              const PopupMenuItem(
-                                  value: 0,
-                                  child: ListTile(
-                                      leading: Icon(Icons.add_to_home_screen),
-                                      title: Text('Skapa genväg'),
-                                      visualDensity: VisualDensity.compact))
-                            ])
-                  ]
-                : null),
+            actions: <Widget>[
+              PopupMenuButton(
+                  onSelected: (action) {
+                    switch (action) {
+                      case MenuAction.addToHomeScreen:
+                        return _createShortcut();
+                      case MenuAction.showEarlierDepartures:
+                        var duration =
+                            widget._state.departureFrequency != null ? 5.0 / widget._state.departureFrequency! : 60;
+                        widget._dateTime =
+                            (widget._dateTime ?? DateTime.now()).subtract(Duration(minutes: duration.ceil()));
+                        _updateDepartureBoard(addOnlyOnce: true, ignoreError: true);
+                        _refreshKey.currentState?.show();
+                        break;
+                      case MenuAction.showMoreDepartures:
+                        if (widget._state.timeSpan != null && widget._state.timeSpan != 1439) {
+                          widget._state.timeSpan = min(widget._state.timeSpan! + 15, 1439);
+                        } else {
+                          widget._state.limit = (widget._state.limit ?? 20) + 20;
+                          widget._state.target = widget._state.limit;
+                        }
+                        _updateDepartureBoard(addOnlyOnce: true, ignoreError: true);
+                        _refreshKey.currentState?.show();
+                        break;
+                      default:
+                    }
+                  },
+                  itemBuilder: (BuildContext context) => [
+                        if (supportShortcuts)
+                          const PopupMenuItem(
+                              value: MenuAction.addToHomeScreen,
+                              child: ListTile(
+                                  leading: Icon(Icons.add_to_home_screen),
+                                  title: Text('Skapa genväg'),
+                                  visualDensity: VisualDensity.compact)),
+                        const PopupMenuItem(
+                            value: MenuAction.showEarlierDepartures,
+                            child: ListTile(
+                                leading: Icon(Icons.history),
+                                title: Text('Visa tidigare avgångar'),
+                                visualDensity: VisualDensity.compact)),
+                        const PopupMenuItem(
+                            value: MenuAction.showMoreDepartures,
+                            child: ListTile(
+                                leading: Icon(Icons.update),
+                                title: Text('Visa fler avgångar'),
+                                visualDensity: VisualDensity.compact))
+                      ])
+            ]),
         backgroundColor: cardBackgroundColor(context),
         body: SystemGestureArea(
           MediaQuery.of(context).systemGestureInsets,
           child: RefreshIndicator(
+            key: _refreshKey,
             onRefresh: () => _handleRefresh(),
-            child: StreamBuilder<DepartureBoardWithTrafficSituations>(
+            child: StreamBuilder<Iterable<Departure>>(
                 builder: (context, departureBoard) {
                   if (departureBoard.connectionState == ConnectionState.waiting) return loadingPage();
                   if (!departureBoard.hasData) return ErrorPage(_updateDepartureBoard, error: departureBoard.error);
-                  if (departureBoard.data!.departures.isEmpty) return noDataPage('Inga avgångar hittades');
-                  var bgLuminance = Theme.of(context).cardColor.computeLuminance();
+                  if (departureBoard.data!.isEmpty) return noDataPage('Inga avgångar hittades');
+                  var bgColor = Theme.of(context).cardColor;
                   return CustomScrollView(slivers: [
-                    if (widget._dateTime != null && departureBoard.data!.departures.isNotEmpty)
-                      dateBar(widget._dateTime!),
+                    if (widget._dateTime != null && departureBoard.data!.isNotEmpty) dateBar(widget._dateTime!),
                     SliverSafeArea(
-                      sliver:
-                          departureBoardList(departureBoard.data!.departures, bgLuminance, onTap: (context, departure) {
+                      sliver: departureBoardList(departureBoard.data!, bgColor, onTap: (context, departure) {
                         _timer?.cancel();
                         Navigator.push(context, MaterialPageRoute(builder: (context) {
-                          return JourneyDetailWidget(
-                              departure.journeyDetailRef,
-                              departure.sname,
-                              departure.fgColor,
-                              departure.bgColor,
-                              departure.direction,
-                              departure.journeyId,
-                              departure.type,
-                              departure.name,
-                              departure.journeyNumber,
-                              departure.stopId,
-                              departure.dateTime);
+                          return JourneyDetailsWidget(DepartureDetailsRef.fromDeparture(departure));
                         })).then((_) => _initTimer());
                       }, onLongPress: (context, departure) {
                         Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
                           _timer?.cancel();
                           return MapWidget([
                             MapJourney(
-                                journeyDetailRef: JourneyDetailRef.fromDeparture(departure),
-                                refStopId: departure.stopId,
-                                focusJid: departure.journeyId)
+                                journeyDetailsRef: DepartureDetailsRef.fromDeparture(departure),
+                                refStopPointGid: departure.stopPoint.gid,
+                                focusJid: departure.serviceJourney.gid,
+                                focusTrainNumber: departure.isTrain ? departure.trainNumber : null)
                           ]);
                         })).then((_) => _initTimer());
                       }),
                       bottom: false,
                     ),
-                    SliverSafeArea(
-                      sliver: trafficSituationList(departureBoard.data!.ts,
-                          padding: const EdgeInsets.fromLTRB(10, 0, 10, 10), showAffectedStop: false),
-                    )
+                    trafficSituationWidget(_trafficSituationSubject.stream)
                   ]);
                 },
                 stream: _departureStreamController.stream),
@@ -156,32 +189,32 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
           )
         : Text(widget._location.name.firstPart(), overflow: TextOverflow.fade);
 
-    return widget.direction == null
+    return widget._direction == null
         ? text
         : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             text,
-            Text('mot ${widget.direction!.name.firstPart()}',
+            Text('mot ${widget._direction!.name.firstPart()}',
                 overflow: TextOverflow.fade, style: const TextStyle(fontSize: 14, color: Colors.white70))
           ]);
   }
 
   Future<void> _updateDepartureBoard({bool addOnlyOnce = false, bool ignoreError = false}) async {
-    int stopId;
+    String stopAreaGid;
     if (widget._location is CurrentLocation) {
       try {
         StopLocation? location =
             await (widget._location as CurrentLocation).location(onlyStops: true, forceRefresh: true) as StopLocation?;
         if (location == null) throw NoLocationError();
-        stopId = location.id;
+        stopAreaGid = location.gid;
       } catch (e) {
         return _departureStreamController.addError(e);
       }
     } else {
-      stopId = (widget._location as StopLocation).id;
+      stopAreaGid = (widget._location as StopLocation).gid;
     }
-    await getDepartureBoard(_departureStreamController, stopId, widget._dateTime, widget._departureBoardOptions,
-        widget.direction, widget._location.lat, widget._location.lon,
-        addOnlyOnce: addOnlyOnce, ignoreError: ignoreError);
+    await getDepartureBoard(_departureStreamController, stopAreaGid, widget._dateTime, widget._departureBoardOptions,
+        widget._direction, widget._location.position, widget._state,
+        addOnlyOnce: addOnlyOnce, ignoreError: ignoreError, tsSubject: _trafficSituationSubject);
   }
 
   void _createShortcut() {
@@ -190,32 +223,26 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
     if (widget._location is CurrentLocation) {
       params['currentLocation'] = 'true';
     } else if (widget._location is StopLocation) {
-      params['id'] = (widget._location as StopLocation).id.toString();
+      params['id'] = (widget._location as StopLocation).gid;
       params['name'] = widget._location.name;
-      params['lat'] = widget._location.lat.toString();
-      params['lon'] = widget._location.lon.toString();
+      params['lat'] = widget._location.position.latitude.toString();
+      params['lon'] = widget._location.position.longitude.toString();
     }
 
-    if (widget.direction != null) {
-      params['dirId'] = widget.direction!.id.toString();
-      params['dirName'] = widget.direction!.name;
-      params['dirLat'] = widget.direction!.lat.toString();
-      params['dirLon'] = widget.direction!.lon.toString();
+    if (widget._direction != null) {
+      params['dirId'] = widget._direction!.gid;
+      params['dirName'] = widget._direction!.name;
+      params['dirLat'] = widget._direction!.position.latitude.toString();
+      params['dirLon'] = widget._direction!.position.longitude.toString();
     }
 
     if (widget._departureBoardOptions.includeArrivals) {
       params['includeArrivals'] = 'true';
     }
 
-    if (!widget._departureBoardOptions.services.every((b) => b)) {
-      params['services'] = widget._departureBoardOptions.services.map((b) => b ? 1 : 0).join();
-    }
-
     var uri = Uri(scheme: 'resecentrum', host: 'board', queryParameters: params);
 
-    var icon = widget._location is StopLocation
-        ? getStopIconString((widget._location as StopLocation).id.toString())
-        : 'my_location';
+    var icon = widget._location is StopLocation ? getStopIconString(widget._location as StopLocation) : 'my_location';
 
     var summary = widget._departureBoardOptions.summary;
 
@@ -223,171 +250,191 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
   }
 }
 
-Future<void> getDepartureBoard(StreamController streamController, int stopId, DateTime? dateTime,
-    DepartureBoardOptions departureBoardOptions, StopLocation? direction, double lat, long,
-    {int? timeSpan, bool addOnlyOnce = false, bool secondPass = false, bool ignoreError = false}) async {
+Future<void> getDepartureBoard(
+    StreamController streamController,
+    String stopAreaGid,
+    DateTime? dateTime,
+    DepartureBoardOptions departureBoardOptions,
+    StopLocation? direction,
+    LatLng stopPosition,
+    DepartureBoardState state,
+    {bool addOnlyOnce = false,
+    bool secondPass = false,
+    bool ignoreError = false,
+    BehaviorSubject? tsSubject}) async {
   try {
-    var departuresRequest = reseplaneraren.getDepartureBoard(
-      stopId,
-      dateTime: dateTime,
-      direction: direction?.id,
-      timeSpan: timeSpan,
-      useTram: departureBoardOptions.services[0] ? null : false,
-      useBus: departureBoardOptions.services[1] ? null : false,
-      useVas: departureBoardOptions.services[2] ? null : false,
-      useRegTrain: departureBoardOptions.services[3] ? null : false,
-      useLDTrain: departureBoardOptions.services[3] ? null : false,
-      useBoat: departureBoardOptions.services[4] ? null : false,
-    );
+    var departuresRequest = PlaneraResa.departures(stopAreaGid,
+        startDateTime: dateTime, timeSpanInMinutes: state.timeSpan, limit: state.limit, directionGid: direction?.gid);
 
     Future<Iterable<Departure>?>? arrivalsRequest;
     if (departureBoardOptions.includeArrivals && direction == null) {
-      arrivalsRequest = reseplaneraren
-          .getArrivalBoard(
-            stopId,
-            dateTime: dateTime ?? DateTime.now(),
-            timeSpan: timeSpan,
-            useTram: departureBoardOptions.services[0] ? null : false,
-            useBus: departureBoardOptions.services[1] ? null : false,
-            useVas: departureBoardOptions.services[2] ? null : false,
-            useRegTrain: departureBoardOptions.services[3] ? null : false,
-            useLDTrain: departureBoardOptions.services[3] ? null : false,
-            useBoat: departureBoardOptions.services[4] ? null : false,
-          )
+      arrivalsRequest = PlaneraResa.arrivals(stopAreaGid,
+              startDateTime: dateTime, timeSpanInMinutes: state.timeSpan, limit: state.limit)
           .suppress();
     }
 
-    Future<Iterable<TrafficSituation>?> ts = reseplaneraren.getTrafficSituationsByStopId(stopId).suppress();
+    Future<Iterable<TrafficSituation>?>? ts;
+    if (tsSubject != null && !secondPass) {
+      ts = TrafficSituations.getTrafficSituationsForStopArea(stopAreaGid).suppress();
+    }
 
     var departures = await departuresRequest;
 
     var result = departures.toList();
 
-    // Workaround for bug in API where some departures after midnight are missing when direction is set.
-    if (direction != null &&
-        (departures.length < 20 || (dateTime ?? DateTime.now()).day != departures.last.dateTime.day) &&
-        !secondPass) {
-      var departuresAfterMidnight = await reseplaneraren
-          .getDepartureBoard(
-            stopId,
-            dateTime: (dateTime ?? DateTime.now()).startOfNextDay(),
-            direction: direction.id,
-            timeSpan: timeSpan,
-            useTram: departureBoardOptions.services[0] ? null : false,
-            useBus: departureBoardOptions.services[1] ? null : false,
-            useVas: departureBoardOptions.services[2] ? null : false,
-            useRegTrain: departureBoardOptions.services[3] ? null : false,
-            useLDTrain: departureBoardOptions.services[3] ? null : false,
-            useBoat: departureBoardOptions.services[4] ? null : false,
-          )
-          .suppress();
-
-      result = departures
-          .followedBy(departuresAfterMidnight?.where((d) => !result.any((e) => e.journeyId == d.journeyId)) ?? [])
-          .toList();
-    }
-
     var needDepartedCheck = result.where((d) {
-      var timeLeft = d.getDateTime().difference(DateTime.now());
+      var timeLeft = d.time.difference(DateTime.now());
       var minutesLeft = timeLeft.minutesRounded();
-      return d.rtDateTime == null && minutesLeft >= -1 && minutesLeft <= 5 && !d.cancelled;
+      return !d.isTrain && d.estimatedTime == null && minutesLeft >= -1 && minutesLeft <= 5 && !d.isCancelled;
     });
 
     if (needDepartedCheck.isNotEmpty) {
-      Iterable<VehiclePosition>? positions =
-          await vehiclePositionsService.getPositions(needDepartedCheck.map((d) => d.journeyId).toList(growable: false));
-      for (VehiclePosition position in positions ?? []) {
-        var departure = needDepartedCheck.firstWhere((d) => d.journeyId == position.journeyId);
-        if (hasDeparted(position, lat, long)) departure.state = DepartureState.departed;
+      Iterable<VehiclePosition>? positions = await VehiclePositions.getPositions(
+          needDepartedCheck.map((d) => d.serviceJourney.gid).toList(growable: false));
+      for (VehiclePosition vehiclePosition in positions ?? []) {
+        var departure = needDepartedCheck.firstWhere((d) => d.serviceJourney.gid == vehiclePosition.journeyId);
+        if (hasDeparted(vehiclePosition, departure.stopPoint.position)) departure.state = DepartureState.departed;
       }
     }
+
+    var lastPlannedTime = maxBy(result, (departure) => departure.plannedTime)?.plannedTime;
+    var lastEstimatedTime = maxBy(result, (departure) => departure.time)?.time;
 
     if (departureBoardOptions.includeArrivals) {
       var arrivals = await arrivalsRequest;
 
       if (arrivals != null) {
         arrivals = arrivals.where((a) =>
-            !result.any((d) => d.journeyId == a.journeyId) &&
-            (result.isEmpty || a.dateTime.isBefore(result.last.dateTime)) &&
-            !(dateTime == null && a.dateTime.isBefore(DateTime.now())));
-        result.insertAll(0, arrivals);
+            !result.any((d) => d.detailsReference == a.detailsReference) &&
+            (result.length >= (state.limit ?? 20)).implies(lastPlannedTime != null &&
+                lastEstimatedTime != null &&
+                a.plannedTime.isBefore(lastPlannedTime) &&
+                a.time.isBefore(lastEstimatedTime)) &&
+            !(dateTime == null && a.plannedTime.isBefore(DateTime.now())));
+        result.addAll(arrivals);
       }
     }
 
+    if (lastPlannedTime != null) {
+      state.departureFrequency = result.length / lastPlannedTime.difference(dateTime ?? DateTime.now()).inMinutes;
+    }
+
+    var lastPass = true;
+    var secondPassDone = false;
+
     // If the next 20 departures does not include all departures within the next 15 minutes.
-    if (result.isNotEmpty &&
-        result.length >= 20 &&
-        result.last.dateTime.isBefore((dateTime ?? DateTime.now()).add(const Duration(minutes: 15))) &&
+    if (result.length >= 20 &&
+        lastPlannedTime!.isBefore((dateTime ?? DateTime.now()).add(const Duration(minutes: 15))) &&
+        state.timeSpan != 15 &&
         !secondPass) {
-      getDepartureBoard(streamController, stopId, dateTime, departureBoardOptions, direction, lat, long,
-          timeSpan: 15, secondPass: true, ignoreError: ignoreError);
+      state.timeSpan = 15;
+      state.limit = 10000;
+      getDepartureBoard(streamController, stopAreaGid, dateTime, departureBoardOptions, direction, stopPosition, state,
+              secondPass: true, ignoreError: ignoreError, tsSubject: tsSubject)
+          .whenComplete(() => secondPassDone = true);
       if (addOnlyOnce) return;
+      lastPass = false;
+    }
+
+    if (result.length < (state.target ?? 20) && state.timeSpan != 1439 && !secondPass) {
+      state.timeSpan = 1439;
+      getDepartureBoard(streamController, stopAreaGid, dateTime, departureBoardOptions, direction, stopPosition, state,
+              secondPass: true, ignoreError: ignoreError, tsSubject: tsSubject)
+          .whenComplete(() => secondPassDone = true);
+      if (addOnlyOnce || result.isEmpty) return;
+      lastPass = false;
+    }
+
+    // Workaround for bug in API where some departures after midnight are missing when direction is set.
+    if (lastPass &&
+        direction != null &&
+        (departures.length < 20 || (dateTime ?? DateTime.now()).day != departures.last.plannedTime.day)) {
+      var departuresAfterMidnight = await PlaneraResa.departures(stopAreaGid,
+              startDateTime: (dateTime ?? DateTime.now()).startOfNextDay(),
+              directionGid: direction.gid,
+              limit: state.limit ?? 20,
+              timeSpanInMinutes: state.timeSpan)
+          .suppress();
+
+      result = departures
+          .followedBy(
+              departuresAfterMidnight?.where((d) => !result.any((e) => e.serviceJourney.gid == d.serviceJourney.gid)) ??
+                  [])
+          .toList();
     }
 
     var notes = <TS>[];
 
-    if (result.any((d) => isTrainType(d.type) && !d.arrival)) {
-      await _addTrainInfo(result, departureBoardOptions, direction, notes, long, lat, dateTime, stopId);
+    if (result.any((d) => d.isTrain)) {
+      await _addTrainInfo(result, departureBoardOptions, direction, notes, stopPosition, dateTime, stopAreaGid);
     }
 
     result.sort((a, b) {
-      int cmp = a.getDateTime().compareTo(b.getDateTime());
+      int cmp = a.time.compareTo(b.time);
       if (cmp != 0) return cmp;
-      cmp = a.dateTime.compareTo(b.dateTime);
+      cmp = a.plannedTime.compareTo(b.plannedTime);
       if (cmp != 0) return cmp;
       if (a.arrival != b.arrival) return a.arrival ? -1 : 1;
-      return a.journeyId.compareTo(b.journeyId);
+      return a.serviceJourney.gid.compareTo(b.serviceJourney.gid);
     });
 
-    var filteredTs = (await ts)?.where((ts) => isPresent(ts.startTime, ts.endTime, dateTime ?? DateTime.now(),
-        result.lastOrNull?.getDateTime() ?? dateTime ?? DateTime.now()));
+    if (!secondPassDone) streamController.add(result);
 
-    if (direction != null) {
-      filteredTs = filteredTs?.where((ts) => ts.affectedLines
-          .map((line) => line.gid)
-          .toSet()
-          .intersection(result.map((departure) => lineIdFromJourneyId(departure.journeyId)).toSet())
-          .isNotEmpty);
+    if (tsSubject != null) {
+      if (!secondPass) state.ts = await ts;
+
+      var filteredTs = state.ts?.where((ts) => isPresent(
+          ts.startTime, ts.endTime, dateTime ?? DateTime.now(), result.lastOrNull?.time ?? dateTime ?? DateTime.now()));
+
+      if (direction != null) {
+        filteredTs = filteredTs?.where((ts) => ts.affectedLines
+            .map((line) => line.gid)
+            .toSet()
+            .intersection(result.map((departure) => lineIdFromJourneyId(departure.serviceJourney.gid)).toSet())
+            .isNotEmpty);
+      }
+
+      filteredTs = filteredTs?.sortTs(dateTime ?? DateTime.now());
+      tsSubject.add((filteredTs ?? []).cast<TS>().followedBy(notes));
     }
-
-    filteredTs = filteredTs?.sortTs(dateTime ?? DateTime.now());
-
-    streamController.add(DepartureBoardWithTrafficSituations(result, (filteredTs ?? []).cast<TS>().followedBy(notes)));
-  } catch (error) {
+  } catch (error, stackTrace) {
+    if (kDebugMode) {
+      print(error);
+      print(stackTrace);
+    }
     if (ignoreError) return;
     streamController.addError(error);
   }
 }
 
 Future<void> _addTrainInfo(List<Departure> result, DepartureBoardOptions departureBoardOptions, StopLocation? direction,
-    List<TS> notes, long, double lat, DateTime? dateTime, int stopId) async {
-  var trainDeparturesRequest = trafikverket.getTrainStationBoard(result);
+    List<TS> notes, LatLng position, DateTime? dateTime, String stopAreaGid) async {
+  var trainDeparturesRequest = Trafikverket.getTrainStationBoard(result);
   var trainArrivalsRequest = departureBoardOptions.includeArrivals && direction == null
-      ? trafikverket.getTrainStationBoard(result, arrival: true)
+      ? Trafikverket.getTrainStationBoard(result, arrival: true)
       : null;
 
   var trainActivities = (await trainDeparturesRequest)?.followedBy(await trainArrivalsRequest ?? []);
 
   if (trainActivities == null) {
-    notes.add(Note(0, 'low', 'Kunde inte hämta information från Trafikverket'));
+    notes.add(Note('Kunde inte hämta information från Trafikverket'));
     return;
   }
 
-  String? locationSignature = trainActivities.isNotEmpty
-      ? trainActivities.first.locationSignature
-      : await trafikverket.getTrainStationFromLocation(long, lat);
+  String? locationSignature = trainActivities.firstOrNull?.locationSignature;
+  if (!trainActivities.every((train) => train.locationSignature == locationSignature)) locationSignature = null;
+  locationSignature ??= await Trafikverket.getTrainStationFromLocation(position);
   if (locationSignature == null) return;
 
-  var lateTrainsRequest =
-      trainActivities.isNotEmpty ? trafikverket.getLateTrains(locationSignature, dateTime) : null;
+  var lateTrainsRequest = trainActivities.isNotEmpty ? Trafikverket.getLateTrains(locationSignature, dateTime) : null;
 
   String? directionSignature;
   if (direction != null) {
-    directionSignature = await trafikverket.getTrainStationFromLocation(direction.lon, direction.lat);
+    directionSignature = await Trafikverket.getTrainStationFromLocation(direction.position);
   }
 
-  var trainStationMessages = trafikverket.getTrainStationMessage(
-      locationSignature, dateTime ?? DateTime.now(), result.last.getDateTime(), directionSignature);
+  var trainStationMessages = Trafikverket.getTrainStationMessage(
+      locationSignature, dateTime ?? DateTime.now(), result.last.time, directionSignature);
 
   var lateTrains = await lateTrainsRequest;
 
@@ -401,45 +448,39 @@ Future<void> _addTrainInfo(List<Departure> result, DepartureBoardOptions departu
 
     Future<Iterable<Departure>?>? lateDepartureBoardRequest;
     if (lateDepartures.isNotEmpty) {
-      lateDepartureBoardRequest = reseplaneraren
-          .getDepartureBoard(stopId,
-              dateTime: lateDepartures.first.advertisedTimeAtLocation,
-              timeSpan: lateDepartures.last.advertisedTimeAtLocation
-                  .difference(lateDepartures.first.advertisedTimeAtLocation)
-                  .inMinutes,
-              direction: direction?.id,
-              useBus: false,
-              useTram: false,
-              useBoat: false)
-          .suppress();
+      lateDepartureBoardRequest = PlaneraResa.departures(
+        stopAreaGid,
+        startDateTime: lateDepartures.first.advertisedTimeAtLocation,
+        timeSpanInMinutes: lateDepartures.last.advertisedTimeAtLocation
+            .difference(lateDepartures.first.advertisedTimeAtLocation)
+            .inMinutes,
+      ).suppress();
     }
 
     Future<Iterable<Departure>?>? lateArrivalBoardRequest;
     if (lateArrivals.isNotEmpty && departureBoardOptions.includeArrivals && direction == null) {
-      lateArrivalBoardRequest = reseplaneraren
-          .getArrivalBoard(stopId,
-              dateTime: lateArrivals.first.advertisedTimeAtLocation,
-              timeSpan: lateArrivals.last.advertisedTimeAtLocation
-                  .difference(lateArrivals.first.advertisedTimeAtLocation)
-                  .inMinutes,
-              useBus: false,
-              useTram: false,
-              useBoat: false)
-          .suppress();
+      lateArrivalBoardRequest = PlaneraResa.arrivals(
+        stopAreaGid,
+        startDateTime: lateArrivals.first.advertisedTimeAtLocation,
+        timeSpanInMinutes: lateArrivals.last.advertisedTimeAtLocation
+            .difference(lateArrivals.first.advertisedTimeAtLocation)
+            .inMinutes,
+      ).suppress();
     }
 
     var lateDepartureBoard = await lateDepartureBoardRequest;
     if (lateDepartureBoard != null) {
       for (TrainAnnouncement lateDeparture in lateDepartures) {
         var missingDeparture = lateDepartureBoard.firstWhereOrNull((d) =>
-            d.journeyNumber == lateDeparture.advertisedTrainIdent &&
-            d.dateTime.isAtSameMomentAs(lateDeparture.advertisedTimeAtLocation) &&
-            isTrainType(d.type));
+            d.isTrain &&
+            d.trainNumber == lateDeparture.advertisedTrainIdent &&
+            d.plannedTime.isAtSameMomentAs(lateDeparture.advertisedTimeAtLocation) &&
+            lateDeparture.locationSignature == locationSignature);
         if (missingDeparture != null &&
             !result.any((d) =>
-                d.journeyNumber == lateDeparture.advertisedTrainIdent &&
-                d.dateTime.isAtSameMomentAs(lateDeparture.advertisedTimeAtLocation) &&
-                isTrainType(d.type))) {
+                d.isTrain &&
+                d.trainNumber == lateDeparture.advertisedTrainIdent &&
+                d.plannedTime.isAtSameMomentAs(lateDeparture.advertisedTimeAtLocation))) {
           result.add(missingDeparture);
           lateTrainActivities.add(lateDeparture);
         }
@@ -450,11 +491,12 @@ Future<void> _addTrainInfo(List<Departure> result, DepartureBoardOptions departu
     if (lateArrivalBoard != null) {
       for (TrainAnnouncement lateArrival in lateArrivals) {
         var missingArrival = lateArrivalBoard.firstWhereOrNull((a) =>
-            a.journeyNumber == lateArrival.advertisedTrainIdent &&
-            a.dateTime.isAtSameMomentAs(lateArrival.advertisedTimeAtLocation) &&
-            isTrainType(a.type));
+            a.isTrain &&
+            a.trainNumber == lateArrival.advertisedTrainIdent &&
+            a.plannedTime.isAtSameMomentAs(lateArrival.advertisedTimeAtLocation) &&
+            lateArrival.locationSignature == locationSignature);
         if (missingArrival != null &&
-            !result.any((d) => d.journeyNumber == lateArrival.advertisedTrainIdent && isTrainType(d.type))) {
+            !result.any((d) => d.isTrain && d.trainNumber == lateArrival.advertisedTrainIdent)) {
           result.add(missingArrival);
           lateTrainActivities.add(lateArrival);
         }
@@ -466,22 +508,27 @@ Future<void> _addTrainInfo(List<Departure> result, DepartureBoardOptions departu
 
   for (TrainAnnouncement activity in trainActivities) {
     int i = result.indexWhere((d) =>
-        d.journeyNumber == activity.advertisedTrainIdent &&
-        d.dateTime == activity.advertisedTimeAtLocation &&
-        isTrainType(d.type) &&
-        d.arrival == (activity.activityType == 'Ankomst'));
+        d.isTrain &&
+        d.trainNumber == activity.advertisedTrainIdent &&
+        d.plannedTime == activity.advertisedTimeAtLocation &&
+        d.arrival == (activity.activityType == 'Ankomst') &&
+        activity.locationSignature == locationSignature);
     if (i == -1) continue;
-    result[i].rtDateTime = activity.timeAtLocation ??
+    result[i].estimatedTime = activity.timeAtLocation ??
         activity.estimatedTimeAtLocation ??
         activity.plannedEstimatedTimeAtLocation ??
         activity.advertisedTimeAtLocation;
-    result[i].track = activity.trackAtLocation;
-    if (activity.deviation.contains('Spårändrat')) result[i].rtTrack = activity.trackAtLocation;
-    result[i].cancelled |= activity.canceled;
+    if (activity.trackAtLocation == 'x') {
+      result[i].stopPoint.plannedPlatform = null;
+    } else {
+      result[i].stopPoint.plannedPlatform = activity.trackAtLocation;
+      if (activity.deviation.contains('Spårändrat')) result[i].stopPoint.estimatedPlatform = activity.trackAtLocation;
+    }
+    result[i].isCancelled |= activity.canceled;
 
     if (activity.deviation.isNotEmpty) result[i].deviation = activity.deviation;
 
-    if (activity.timeAtLocation == null && (result[i].rtDateTime?.isBefore(DateTime.now()) ?? false)) {
+    if (activity.timeAtLocation == null && (result[i].estimatedTime?.isBefore(DateTime.now()) ?? false)) {
       result[i].state = DepartureState.atStation;
     }
 
@@ -489,19 +536,19 @@ Future<void> _addTrainInfo(List<Departure> result, DepartureBoardOptions departu
 
     if (activity.timeAtLocation != null &&
         activity.activityType == 'Avgang' &&
-        (result[i].rtDateTime?.isAfter(DateTime.now().subtract(const Duration(minutes: 15))) ?? false)) {
+        (result[i].estimatedTime?.isAfter(DateTime.now().subtract(const Duration(minutes: 15))) ?? false)) {
       result[i].state = DepartureState.departed;
     }
   }
 }
 
-Widget departureBoardList(Iterable<Departure> departures, double bgLuminance,
+Widget departureBoardList(Iterable<Departure> departures, Color bgColor,
     {void Function(BuildContext, Departure)? onTap, void Function(BuildContext, Departure)? onLongPress}) {
   if (departures.isEmpty) return SliverFillRemaining(child: noDataPage('Inga avgångar hittades'));
   return SliverPadding(
     padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 3),
     sliver: DiffUtilSliverList<Departure>(
-      equalityChecker: (a, b) => a.journeyId == b.journeyId && a.dateTime == b.dateTime,
+      equalityChecker: (a, b) => a.serviceJourney.gid == b.serviceJourney.gid && a.plannedTime == b.plannedTime,
       items: departures.toList(growable: false),
       builder: (BuildContext context, Departure departure) {
         return Card(
@@ -515,11 +562,11 @@ Widget departureBoardList(Iterable<Departure> departures, double bgLuminance,
                       Container(
                           constraints: const BoxConstraints(minWidth: 35 + 8),
                           child: simpleTimeWidget(
-                              departure.dateTime, getDepartureDelay(departure), departure.cancelled, departure.state,
+                              departure.plannedTime, departure.delay, departure.isCancelled, departure.state,
                               bold: false, multiline: true)),
                       Container(constraints: const BoxConstraints(minWidth: 28), child: getCountdown(departure)),
                       const SizedBox(width: 8),
-                      lineIconFromDeparture(departure, bgLuminance, context),
+                      lineIconFromLine(departure.serviceJourney.line, bgColor, context),
                       const SizedBox(width: 10),
                       Expanded(
                           child: departure.arrival
@@ -534,11 +581,15 @@ Widget departureBoardList(Iterable<Departure> departures, double bgLuminance,
                                 )
                               : highlightFirstPart(departure.getDirection(), overflow: TextOverflow.fade)),
                       const SizedBox(width: 10),
-                      accessibilityIcon(departure.accessibility, departure.rtDateTime,
-                          margin: EdgeInsets.fromLTRB(
-                              0, 0, departure.track == null ? 0 : (departure.rtTrack == null ? 5 : 10), 0),
-                          type: departure.type),
-                      departure.rtTrack != null ? trackChange(departure.rtTrack!) : Text(departure.track ?? '')
+                      accessibilityIcon(departure.serviceJourney.line.isWheelchairAccessible, departure.estimatedTime,
+                          margin: EdgeInsets.only(
+                              right: departure.stopPoint.plannedPlatform.isNullOrEmpty
+                                  ? 0
+                                  : (departure.stopPoint.estimatedPlatform == null ? 5 : 10)),
+                          transportMode: departure.serviceJourney.line.transportMode),
+                      departure.stopPoint.estimatedPlatform != null
+                          ? trackChange(departure.stopPoint.estimatedPlatform!)
+                          : Text(departure.stopPoint.plannedPlatform ?? '')
                     ]))));
       },
       insertAnimationBuilder: (context, animation, child) => FadeTransition(
@@ -557,9 +608,27 @@ Widget departureBoardList(Iterable<Departure> departures, double bgLuminance,
   );
 }
 
-class DepartureBoardWithTrafficSituations {
-  Iterable<Departure> departures;
-  Iterable<TS> ts;
+StreamBuilder<Iterable<TS>> trafficSituationWidget(Stream<Iterable<TS>> stream) {
+  return StreamBuilder<Iterable<TS>>(
+      stream: stream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return SliverToBoxAdapter(child: loadingPage());
+        }
+        if (!snapshot.hasData) {
+          return SliverToBoxAdapter(child: noDataPage('Kunde inte hämta trafikinformation'));
+        }
+        return SliverSafeArea(
+          sliver: trafficSituationList(snapshot.data!,
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10), showAffectedStop: false),
+        );
+      });
+}
 
-  DepartureBoardWithTrafficSituations(this.departures, this.ts);
+class DepartureBoardState {
+  int? timeSpan;
+  int? limit;
+  Iterable<TrafficSituation>? ts;
+  double? departureFrequency;
+  int? target;
 }

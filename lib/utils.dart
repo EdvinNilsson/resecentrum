@@ -9,14 +9,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
-import 'package:maplibre_gl/mapbox_gl.dart';
+import 'package:maplibre_gl/mapbox_gl.dart' hide Line;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'extensions.dart';
-import 'map_widget.dart';
-import 'reseplaneraren.dart';
-import 'trafikverket.dart';
-import 'vehicle_positions_service.dart';
+import 'network/mgate.dart';
+import 'network/planera_resa.dart';
+import 'network/trafikverket.dart';
+import 'network/vehicle_positions.dart';
+
+typedef Json = Map<String, dynamic>;
 
 String getDelayString(int? delay, {DepartureState? state}) {
   if (state == DepartureState.unknownTime) return '+?';
@@ -25,9 +27,9 @@ String getDelayString(int? delay, {DepartureState? state}) {
   return delay < 0 ? str : '+$str';
 }
 
-bool hasDeparted(VehiclePosition vehicle, double lat, double long) {
-  var distance = Geolocator.distanceBetween(vehicle.lat, vehicle.long, lat, long);
-  if ((distance > 150 || vehicle.speed > 20) &&
+bool hasDeparted(VehiclePosition vehicle, LatLng position) {
+  var distance = distanceBetween(vehicle.position, position);
+  if ((distance > 150 || vehicle.speedOrZero > 20) &&
       vehicle.updatedAt.difference(DateTime.now()) < const Duration(minutes: 1)) return true;
   return false;
 }
@@ -43,17 +45,17 @@ Widget getCountdown(Departure departure) {
     if (departure.state == DepartureState.replacementTaxi) {
       return _countdownText('Taxi', style: const TextStyle(color: Colors.red));
     }
-    if (departure.cancelled) return _countdownText('Inst.', style: const TextStyle(color: Colors.red));
+    if (departure.isCancelled) return _countdownText('Inst.', style: const TextStyle(color: Colors.red));
     if (departure.state == DepartureState.unknownTime) return _countdownText('?');
     if (departure.state == DepartureState.departed) return _countdownText('Avg.', style: const TextStyle());
     if (departure.state == DepartureState.atStation) return _countdownText('nu');
 
-    var realtime = departure.rtDateTime != null;
-    var timeLeft = departure.getDateTime().difference(DateTime.now());
+    var realtime = departure.estimatedTime != null;
+    var timeLeft = departure.time.difference(DateTime.now());
     var minutesLeft = timeLeft.minutesRounded();
     if (minutesLeft.abs() >= 100) {
       if (minutesLeft.abs() >= 5940) {
-        int daysLeft = departure.getDateTime().startOfDay().difference(DateTime.now().startOfDay()).inDays;
+        int daysLeft = departure.time.startOfDay().difference(DateTime.now().startOfDay()).inDays;
         return _countdownText('${daysLeft}d');
       } else {
         return _countdownText('${timeLeft.hoursRounded()}h');
@@ -67,16 +69,6 @@ Widget getCountdown(Departure departure) {
 
 int? getDelay(DateTime dateTime, DateTime? rtDateTime) => rtDateTime?.difference(dateTime).inMinutes;
 
-int? getDepartureDelay(Departure departure) => getDelay(departure.dateTime, departure.rtDateTime);
-
-int? getTripLocationDelay(TripLocation departure) => getDelay(departure.dateTime, departure.rtDateTime);
-
-Duration getTripTime(Trip trip) {
-  DateTime startTime = trip.leg.first.origin.getDateTime();
-  DateTime endTime = trip.leg.last.destination.getDateTime();
-  return endTime.difference(startTime);
-}
-
 String getDurationString(Duration duration) {
   return duration.inHours > 0
       ? (duration.minutesRounded() % 60 == 0
@@ -85,21 +77,27 @@ String getDurationString(Duration duration) {
       : '${duration.minutesRounded()} min';
 }
 
-String getTripCountdown(DateTime? departure) {
-  if (departure == null) return '';
-  var timeLeft = departure.difference(DateTime.now());
+String getDistanceString(int distance) {
+  return distance < 1000 ? '${distance.round()} m' : '${NumberFormat('#.#').format(distance / 1000)} km';
+}
+
+String getTripCountdown(DateTime? departureTime, TripLeg? leg, bool isDeparted) {
+  if (departureTime == null) return '';
+  var timeLeft = departureTime.difference(DateTime.now());
   var minutesLeft = timeLeft.minutesRounded();
-  if (minutesLeft.abs() > 1440) return ', ${DateFormat.MMMMEEEEd().format(departure)}';
-  if (minutesLeft < -1) return ', avgått';
+  if (minutesLeft.abs() > 1440) return ', ${DateFormat.MMMMEEEEd().format(departureTime)}';
+  if (leg?.depState.state == DepartureState.unknownTime) return ', invänta tid';
+  if (minutesLeft < -1 || (isDeparted && leg?.estimatedDepartureTime == null)) return ', avgått';
   if (minutesLeft > 0) return ', om ${getDurationString(timeLeft)}';
   return ', nu';
 }
 
-Widget stopRowFromStop(Stop stop,
+Widget stopRowFromStop(Call stop,
     {bool bold = false,
     bool alightingOnly = false,
     bool boardingOnly = false,
     Icon? noteIcon,
+    bool noteIconWithoutPlatform = false,
     BoxConstraints? constraints,
     bool useHintColor = false}) {
   return Builder(builder: (context) {
@@ -119,46 +117,54 @@ Widget stopRowFromStop(Stop stop,
       }
     }
 
-    if (stop.depDateTime != null &&
-        stop.arrDateTime != null &&
-        (stop.depDateTime != stop.arrDateTime ||
-            ((stop.depCancelled != stop.arrCancelled || stop.arrState.state != stop.depState.state) &&
+    if (stop.plannedDepartureTime != null &&
+        stop.plannedArrivalTime != null &&
+        (stop.plannedDepartureTime != stop.plannedArrivalTime ||
+            ((stop.isDepartureCancelled != stop.isArrivalCancelled || stop.arrState.state != stop.depState.state) &&
                 !alightingOnly &&
                 !boardingOnly) ||
-            (stop.rtDepTime != null &&
-                stop.rtArrTime != null &&
-                stop.rtDepTime!.difference(stop.rtArrTime!) > const Duration(minutes: 1)))) {
-      addTimeText(stop.arrDateTime!, stop.rtArrTime, stop.arrCancelled, stop.arrState.state);
+            (stop.estimatedDepartureTime != null &&
+                stop.estimatedArrivalTime != null &&
+                stop.estimatedDepartureTime!.difference(stop.estimatedArrivalTime!) > const Duration(minutes: 1)))) {
+      addTimeText(stop.plannedArrivalTime!, stop.estimatedArrivalTime, stop.isArrivalCancelled, stop.arrState.state);
       textSpans.add(const TextSpan(text: '\n'));
-      addTimeText(stop.depDateTime!, stop.rtDepTime, stop.depCancelled, stop.depState.state);
+      addTimeText(
+          stop.plannedDepartureTime!, stop.estimatedDepartureTime, stop.isDepartureCancelled, stop.depState.state);
     } else {
       addTimeText(
-          stop.depDateTime ?? stop.arrDateTime!,
-          stop.rtDepTime ?? stop.rtArrTime,
-          stop.depDateTime != null ? stop.depCancelled : stop.arrCancelled,
-          stop.depDateTime == null ? stop.arrState.state : stop.depState.state);
+          stop.plannedDepartureTime ?? stop.plannedArrivalTime!,
+          stop.estimatedDepartureTime ?? stop.estimatedArrivalTime,
+          stop.plannedDepartureTime != null ? stop.isDepartureCancelled : stop.isArrivalCancelled,
+          stop.plannedDepartureTime == null ? stop.arrState.state : stop.depState.state);
     }
 
     var text = Text.rich(TextSpan(text: '', children: textSpans));
 
-    return stopRow(text, stop.name, stop.track, stop.rtTrack,
+    return stopRow(text, stop.stopPoint.name, stop.plannedPlatform, stop.estimatedPlatform,
         bold: bold,
         alightingOnly: alightingOnly,
         boardingOnly: boardingOnly,
         noteIcon: noteIcon,
+        noteIconWithoutPlatform: noteIconWithoutPlatform,
         constraints: constraints,
-        rtInfo: !useHintColor || (stop.rtDepTime ?? stop.rtArrTime) != null);
+        rtInfo: !useHintColor || (stop.estimatedDepartureTime ?? stop.estimatedArrivalTime) != null);
   });
 }
 
-Widget simpleTimeWidget(DateTime dateTime, int? delay, bool cancelled, DepartureState state,
-    {bool bold = true, bool multiline = false}) {
+Widget simpleTimeWidget(DateTime dateTime, int? delay, bool cancelled, DepartureState? state,
+    {bool bold = true, bool multiline = false, bool useHintColor = false, bool walk = false}) {
   return Builder(builder: (context) {
     TextStyle style = cancelled
         ? state == DepartureState.replacementBus
             ? TextStyle(color: orange(context))
             : cancelledTextStyle
-        : const TextStyle();
+        : TextStyle(
+            color: useHintColor &&
+                    delay == null &&
+                    dateTime.isSameTransportDayAs(DateTime.now()) &&
+                    walk.implies(dateTime.isBefore(DateTime.now()))
+                ? Theme.of(context).hintColor
+                : null);
 
     String delayString = getDelayString(delay, state: state);
     var children = [
@@ -172,11 +178,12 @@ Widget simpleTimeWidget(DateTime dateTime, int? delay, bool cancelled, Departure
   });
 }
 
-Widget stopRow(Widget time, String name, String? track, String? rtTrack,
+Widget stopRow(Widget time, String name, String? plannedPlatform, String? estimatedPlatform,
     {bool bold = false,
     bool alightingOnly = false,
     bool boardingOnly = false,
     Icon? noteIcon,
+    bool noteIconWithoutPlatform = false,
     BoxConstraints? constraints,
     bool rtInfo = true}) {
   String stopName = name.firstPart();
@@ -189,9 +196,7 @@ Widget stopRow(Widget time, String name, String? track, String? rtTrack,
         child: Row(
           children: [
             Container(
-                constraints: const BoxConstraints(minWidth: 64),
-                margin: const EdgeInsets.fromLTRB(0, 0, 10, 0),
-                child: time),
+                constraints: const BoxConstraints(minWidth: 64), margin: const EdgeInsets.only(right: 10), child: time),
             Expanded(
                 child: Text(stopName,
                     overflow: TextOverflow.fade,
@@ -203,62 +208,45 @@ Widget stopRow(Widget time, String name, String? track, String? rtTrack,
                 margin: const EdgeInsets.symmetric(horizontal: 4),
                 child: noteIcon,
               ),
-            Container(
-                constraints: const BoxConstraints(minWidth: 20),
-                child: rtTrack != null
-                    ? trackChange(rtTrack)
-                    : Text(rtTrack ?? track ?? '',
-                        textAlign: TextAlign.right,
-                        style: !rtInfo ? TextStyle(color: Theme.of(context).hintColor) : null))
+            if (!noteIconWithoutPlatform || !plannedPlatform.isNullOrEmpty)
+              Container(
+                  constraints: const BoxConstraints(minWidth: 20),
+                  child: estimatedPlatform != null
+                      ? trackChange(estimatedPlatform)
+                      : Text(estimatedPlatform ?? plannedPlatform ?? '',
+                          textAlign: TextAlign.right,
+                          style: !rtInfo ? TextStyle(color: Theme.of(context).hintColor) : null))
           ],
         ));
   });
 }
 
-Widget accessibilityIcon(String? accessibility, DateTime? rtDateTime, {EdgeInsetsGeometry? margin, String? type}) =>
-    accessibility == null && rtDateTime != null && (type != null ? !isTrainType(type) : true)
+Widget accessibilityIcon(bool isWheelchairAccessible, DateTime? estimatedTime,
+        {EdgeInsetsGeometry? margin, TransportMode? transportMode}) =>
+    !isWheelchairAccessible && estimatedTime != null && transportMode != TransportMode.train
         ? Container(margin: margin, child: const Icon(Icons.not_accessible))
         : Container();
 
-Icon getNoteIcon(String severity, {bool infoOutline = true}) {
-  switch (severity) {
-    case 'slight':
-    case 'low':
-      return Icon(infoOutline ? Icons.info_outline : Icons.info);
-    case 'severe':
-    case 'high':
-      return const Icon(Icons.warning, color: Colors.red);
-    default:
-      return const Icon(Icons.error, color: Colors.orange);
-  }
-}
+Icon getNoteIcon(Severity severity, {bool infoOutline = true}) => switch (severity) {
+      Severity.low => Icon(infoOutline ? Icons.info_outline : Icons.info),
+      Severity.high => const Icon(Icons.warning, color: Colors.red),
+      _ => const Icon(Icons.error, color: Colors.orange)
+    };
 
-int getNotePriority(String severity) {
-  switch (severity) {
-    case 'slight':
-    case 'low':
-      return 2;
-    case 'severe':
-    case 'high':
-      return 0;
-    default:
-      return 1;
-  }
-}
-
-String? getHighestPriority(String? a, String? b) {
+T? maxOrNull<T>(Comparable<T>? a, T? b) {
   if (a == null) return b;
-  if (b == null) return a;
-  return getNotePriority(a) < getNotePriority(b) ? a : b;
+  if (b == null) return a as T;
+  return (a.compareTo(b) > 0 ? a : b) as T;
 }
 
 var _toGoPattern = RegExp(r'appen (västtrafik|) ?to ?go', multiLine: true, caseSensitive: false);
 
 String? removeToGoMentions(String? text) => text?.replaceAll(_toGoPattern, 'appen');
 
-void buyTicket(BuildContext context, int from, int to) async {
+void buyTicket(BuildContext context, String from, String to) async {
   var uri = Uri.parse('vttogo://s/?f=$from&t=$to');
   if (await launchUrl(uri)) return;
+  if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kunde inte öppna appen Västtrafik To Go')));
 }
 
@@ -305,51 +293,39 @@ String shortStationName(String name, {bool useAcronyms = true}) {
   return result.join(' ');
 }
 
-BoxDecoration lineBoxDecoration(Color bgColor, Color fgColor, double bgLuminance, BuildContext context) {
+BoxDecoration lineBoxDecoration(Line line, Color bgColor, BuildContext context) {
   return BoxDecoration(
     borderRadius: BorderRadius.circular(3),
-    border: (bgColor.computeLuminance() - bgLuminance).abs() < 0.01 ? Border.all(color: fgColor, width: 0.5) : null,
-    color: bgColor,
+    border: colorDiff2(line.backgroundColor, bgColor) < 60 * 60
+        ? Border.all(color: line.foregroundColor, width: 0.5)
+        : null,
+    color: line.backgroundColor,
   );
 }
 
-Leg? nextLeg(List<Leg> legs, int current) =>
-    legs.getRange(current + 1, legs.length).firstWhereOrNull((l) => l.type != 'WALK');
-
-Widget lineIconFromDeparture(Departure departure, double bgLuminance, BuildContext context) {
-  return lineIcon(departure.sname, departure.fgColor, departure.bgColor, bgLuminance, departure.type, departure.name,
-      departure.journeyNumber, context);
-}
-
-Widget lineIconFromLeg(Leg leg, double bgLuminance, BuildContext context) {
-  return lineIcon(leg.sname ?? leg.name, leg.fgColor ?? Colors.white, leg.bgColor ?? Colors.black, bgLuminance,
-      leg.type, leg.name, leg.journeyNumber, context);
-}
-
-Widget lineIcon(String sname, Color fgColor, Color bgColor, double bgLuminance, String type, String name,
-    int? journeyNumber, BuildContext context) {
+Widget lineIconFromLine(Line line, Color bgColor, BuildContext context, {bool shortTrainName = true}) {
   return PhysicalModel(
     elevation: 1.5,
-    color: bgColor,
+    color: line.backgroundColor,
     borderRadius: BorderRadius.circular(3),
     child: Container(
       padding: const EdgeInsets.all(5),
       constraints: const BoxConstraints(minWidth: 30),
-      decoration: lineBoxDecoration(bgColor, fgColor, bgLuminance, context),
+      decoration: lineBoxDecoration(line, bgColor, context),
       child: Text(
-        isTrainType(type)
-            ? '${(name.split(' ').where((t) => int.tryParse(t) == null)).join(' ')} $journeyNumber'
-            : sname,
-        style: TextStyle(color: fgColor, fontWeight: FontWeight.bold),
+        line.transportMode == TransportMode.train && line.shortName != line.designation
+            ? '${shortTrainName ? line.shortName : line.name} ${line.trainNumber}'
+            : line.shortName,
+        style: TextStyle(color: line.foregroundColor, fontWeight: FontWeight.bold),
         textAlign: TextAlign.center,
       ),
     ),
   );
 }
 
-Widget trackChange(String rtTrack) {
+Widget trackChange(String estimatedPlatform) {
   var text = Text(
-    rtTrack,
+    estimatedPlatform,
     style: const TextStyle(color: Colors.black),
     textAlign: TextAlign.center,
   );
@@ -376,12 +352,10 @@ Widget trackChange(String rtTrack) {
   );
 }
 
-bool isTrainType(String type) {
-  return type == 'VAS' || type == 'LDT' || type == 'REG';
-}
-
-int colorDiff(Color a, Color b) {
-  return (a.red - b.red).abs() + (a.green - b.green).abs() + (a.blue - a.blue).abs();
+double colorDiff2(Color a, Color b) {
+  var dr = (a.red - b.red), dg = (a.green - b.green), db = (a.blue - b.blue);
+  var dl = (0.2126 * dr + 0.7152 * dg + 0.0722 * db) * 8;
+  return dr * dr + 4 * dg * dg + db * db + dl * dl;
 }
 
 Color fromHex(String hexString) {
@@ -409,7 +383,7 @@ class NoInternetError extends DisplayableError {
   NoInternetError(Object error)
       : super('Det är inte alltid trafiken rullar på som den ska',
             description: 'Kunde inte kontakta Västtrafik för tillfället', icon: Icons.cloud_off) {
-    if (error is DioError && error.type == DioErrorType.unknown) {
+    if (error is DioException && error.type == DioExceptionType.unknown) {
       message = 'Ingen internetanslutning';
       description = null;
     }
@@ -421,64 +395,11 @@ class NoLocationError extends DisplayableError {
       : super('Okänd nuvarande position', description: description, icon: Icons.location_off);
 }
 
-class HafasError extends DisplayableError {
-  HafasError(String errorCode, errorText) : super(errorText) {
-    switch (errorCode) {
-      case 'R0001':
-      case 'R0002':
-      case 'H9320':
-        message = 'Ogiltig förfrågan';
-        break;
-      case 'H9380':
-        message = 'Startplats, via-hållplats eller destination ligger för nära varandra';
-        break;
-      case 'R0007':
-      case 'S1':
-        message = 'Kommunikationsproblem';
-        break;
-      case 'H9360':
-        message = 'Datum ligger utanför tillåten sökperiod';
-        break;
-      case 'H9300':
-        message = 'Okänd destination';
-        break;
-      case 'H9280':
-        message = 'Okänd via-hållplats';
-        break;
-      case 'H9260':
-        message = 'Okänd startplats';
-        break;
-      case 'H900':
-        message = 'Sökningen kunde inte genomföras p.g.a. tidtabellsbyte';
-        break;
-      case 'H892':
-        message = 'Sökningen är för komplex (var god ange färre via-hållplatser)';
-        break;
-      case 'H891':
-        message = 'Ingen resväg hittades (var god ange en via-hållplats)';
-        break;
-      case 'H895':
-      case 'H9381':
-        message = 'Startplatsen och destinationen ligger för nära varandra';
-        break;
-      case 'H9220':
-        message = 'Kunde inte hitta en hållplats tillräckligt nära den angivna adressen';
-        break;
-    }
-  }
-}
-
-void checkHafasError(dynamic data) {
-  if (data['error'] != null) {
-    throw HafasError(data['error'].split(' ').first, data['errorText']);
-  }
-}
-
 class ErrorPage extends StatefulWidget {
   final AsyncCallback onRefresh;
   final Object? error;
 
-  const ErrorPage(this.onRefresh, {this.error, Key? key}) : super(key: key);
+  const ErrorPage(this.onRefresh, {this.error, super.key});
 
   @override
   State<ErrorPage> createState() => _ErrorPageState();
@@ -576,7 +497,7 @@ class SegmentedControl extends StatefulWidget {
   final List<String> options;
   final SegmentedControlController? controller;
 
-  const SegmentedControl(this.options, {this.controller, Key? key}) : super(key: key);
+  const SegmentedControl(this.options, {this.controller, super.key});
 
   @override
   State<SegmentedControl> createState() => _SegmentedControlState();
@@ -633,17 +554,17 @@ class DateTimeSelector extends StatefulWidget {
   final SegmentedControlController _segmentedControlController;
   final DateTimeSelectorController controller;
 
-  DateTimeSelector(this._segmentedControlController, this.controller, {Key? key}) : super(key: key);
+  DateTimeSelector(this._segmentedControlController, this.controller, {super.key});
 
   @override
   State<DateTimeSelector> createState() => _DateTimeSelectorState();
 }
 
-class _DateTimeSelectorState extends State<DateTimeSelector> {
-  static TimetableInfo? _timetableInfo;
+ValidTimeInterval? validTimeInterval;
 
+class _DateTimeSelectorState extends State<DateTimeSelector> {
   void listener() {
-    if (_timetableInfo == null && widget._segmentedControlController.value != 0) updateTimeTableInfo();
+    if (validTimeInterval == null && widget._segmentedControlController.value != 0) updateTimeTableInfo();
   }
 
   @override
@@ -692,7 +613,7 @@ class _DateTimeSelectorState extends State<DateTimeSelector> {
                               ? await showNativeTimePicker(widget.controller.time ?? TimeOfDay.now())
                               : await showTimePicker(
                                   initialTime: widget.controller.time ?? TimeOfDay.now(), context: context);
-                          if (pickedTime == null) return;
+                          if (pickedTime == null || !context.mounted) return;
                           setState(() {
                             widget._timeInput.text = pickedTime.format(context);
                             widget.controller.time = pickedTime;
@@ -706,8 +627,9 @@ class _DateTimeSelectorState extends State<DateTimeSelector> {
                         onTap: () async {
                           var pickedDate = await showDatePicker(
                             initialDate: widget.controller.date ?? DateTime.now(),
-                            firstDate: _timetableInfo?.dateBegin ?? DateTime.now().subtract(const Duration(days: 60)),
-                            lastDate: _timetableInfo?.dateEnd ?? DateTime.now().add(const Duration(days: 90)),
+                            firstDate:
+                                validTimeInterval?.validFrom ?? DateTime.now().subtract(const Duration(days: 60)),
+                            lastDate: validTimeInterval?.validUntil ?? DateTime.now().add(const Duration(days: 90)),
                             context: context,
                           );
                           if (pickedDate == null) return;
@@ -727,7 +649,7 @@ class _DateTimeSelectorState extends State<DateTimeSelector> {
   }
 
   void updateTimeTableInfo() async {
-    _timetableInfo = await reseplaneraren.getSystemInfo().suppress();
+    validTimeInterval = await PlaneraResa.validTimeInterval().suppress();
   }
 }
 
@@ -748,7 +670,7 @@ Widget dateBar(DateTime dateTime, {bool showTime = true, double margin = 20}) {
         sliver: SliverToBoxAdapter(child: Builder(builder: (context) {
           var format = DateFormat.MMMMEEEEd();
           if (showTime) format.add_Hm();
-          return Text(format.format(dateTime), style: Theme.of(context).textTheme.caption);
+          return Text(format.format(dateTime), style: Theme.of(context).textTheme.bodySmall);
         })),
         padding: EdgeInsets.fromLTRB(margin, 10, margin, 0)),
     bottom: false,
@@ -784,7 +706,8 @@ LatLngBounds? minBounds(LatLngBounds? a, b) {
           LatLng(min(a.northeast.latitude, b.northeast.latitude), min(a.northeast.longitude, b.northeast.longitude)));
 }
 
-String addLineIfNotEmpty(String text) => text.isEmpty ? text : '\n$text';
+double distanceBetween(LatLng a, LatLng b) =>
+    Geolocator.distanceBetween(a.latitude, a.longitude, b.latitude, b.longitude);
 
 Future<Position> getPosition() async {
   bool serviceEnabled;
@@ -809,18 +732,18 @@ Future<Position> getPosition() async {
   }
 }
 
-Future<Location> getLocationFromCoord(double latitude, double longitude,
-    {bool onlyStops = false, int? stopMaxDist}) async {
-  var stopReq = reseplaneraren.getLocationNearbyStops(latitude, longitude, maxDist: stopMaxDist);
+Future<Location> getLocationFromCoord(LatLng position, {bool onlyStops = false, int? stopMaxDist}) async {
+  Future<Iterable<StopLocation>> stopReq = PlaneraResa.locationsByCoordinates(position,
+          types: {LocationType.stoparea, LocationType.stoppoint}, radiusInMeters: stopMaxDist)
+      .then((location) => location.cast());
 
   Future<CoordLocation?>? addressReq;
-  if (!onlyStops) addressReq = reseplaneraren.getLocationNearbyAddress(latitude, longitude);
-  var stop = (await stopReq).firstWhereOrNull((stop) => stop.isStopArea);
-  // If no stop area was found, convert a stop point into a stop area.
-  if (stop == null) {
-    stop = (await stopReq).firstWhereOrNull((stop) => stop.id >= 9022000000000000);
-    stop?.id = stopAreaFromStopId(stop.id);
-    stop?.track = null;
+  if (!onlyStops) addressReq = MGate.getLocationNearbyAddress(position);
+
+  var stop = (await stopReq).firstOrNull;
+  if (stop != null && !stop.isStopArea) {
+    stop = (await stopReq).firstWhereOrNull((s) => s.name == stop!.name && s.isStopArea) ?? stop
+      ..toStopArea();
   }
   if (stop != null) return stop;
   if (!onlyStops) {
@@ -843,26 +766,26 @@ void noLocationFound(BuildContext context, {bool onlyStops = false, String? desc
 
 String lineIdFromJourneyId(String journeyId) => '${journeyId.substring(0, 3)}1${journeyId.substring(4, 11)}00000';
 
-int stopAreaFromStopId(int stopId) => stopId - stopId % 1000 - 1000000000000;
+String stopAreaFromStopPoint(String stopPointGid) =>
+    '${stopPointGid.substring(0, 3)}1${stopPointGid.substring(4, 13)}000';
 
 class SeparatedSliverList extends SliverList {
   SeparatedSliverList(
-      {Key? key,
+      {super.key,
       required IndexedWidgetBuilder itemBuilder,
       required IndexedWidgetBuilder separatorBuilder,
       required itemCount,
       bool addEndingSeparator = false})
       : super(
-            key: key,
             delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
-              final int itemIndex = index ~/ 2;
-              if (itemIndex >= itemCount) return null;
-              if (index.isEven) {
-                return itemBuilder(context, itemIndex);
-              } else {
-                return separatorBuilder(context, itemIndex);
-              }
-            }, childCount: itemCount * 2 - (addEndingSeparator ? 0 : 1)));
+          final int itemIndex = index ~/ 2;
+          if (itemIndex >= itemCount) return null;
+          if (index.isEven) {
+            return itemBuilder(context, itemIndex);
+          } else {
+            return separatorBuilder(context, itemIndex);
+          }
+        }, childCount: itemCount * 2 - (addEndingSeparator ? 0 : 1)));
 }
 
 RenderObjectWidget trafficSituationList(Iterable<TS> ts,
@@ -902,50 +825,52 @@ TextSpan highlightFirstPartSpan(String text, TextStyle? style, BuildContext cont
             ]);
 }
 
-void setTrainInfo(Iterable<TrainAnnouncement> trainJourney, List<Stop> stops, List<Set<String>?>? stopNotesLowPriority,
+void setTrainInfo(Iterable<TrainAnnouncement> trainJourney, List<Call> stops, List<Set<String>?>? stopNotesLowPriority,
     List<Set<String>?>? stopNotesNormalPriority) {
   for (int i = 0, stop = 0; i < trainJourney.length && stop < stops.length; i++) {
     var activity = trainJourney.elementAt(i);
     var next = trainJourney.tryElementAt(i + 1);
     if (activity.activityType == 'Ankomst') {
-      if (!(stops[stop].arrDateTime?.isAtSameMomentAs(activity.advertisedTimeAtLocation) ?? false)) {
-        if (stops[stop].arrDateTime?.isBefore(activity.advertisedTimeAtLocation) ?? false) {
+      if (!(stops[stop].plannedArrivalTime?.isAtSameMomentAs(activity.advertisedTimeAtLocation) ?? false)) {
+        if (stops[stop].plannedArrivalTime?.isBefore(activity.advertisedTimeAtLocation) ?? false) {
           stop++;
           i--;
         }
         continue;
       }
-      stops[stop].rtArrTime = activity.estimatedTimeAtLocation ??
+      stops[stop].estimatedArrivalTime = activity.estimatedTimeAtLocation ??
           activity.plannedEstimatedTimeAtLocation ??
           activity.advertisedTimeAtLocation;
-      if (activity.timeAtLocation != null) stops[stop].rtArrTime = null;
-      if (activity.trackAtLocation != null) stops[stop].track = activity.trackAtLocation;
-      if (activity.deviation.contains('Spårändrat')) stops[stop].rtTrack = activity.trackAtLocation;
-      stops[stop].arrCancelled |= activity.canceled;
+      if (activity.timeAtLocation != null) stops[stop].estimatedArrivalTime = null;
+      if (activity.trackAtLocation != null) stops[stop].plannedPlatform = activity.trackAtLocation!;
+      if (activity.deviation.contains('Spårändrat')) stops[stop].estimatedPlatform = activity.trackAtLocation;
+      stops[stop].isArrivalCancelled |= activity.canceled;
       setDepartureState(activity, stops[stop].arrState);
     } else {
-      if (!(stops[stop].depDateTime?.isAtSameMomentAs(activity.advertisedTimeAtLocation) ?? false)) {
-        if (stops[stop].depDateTime?.isBefore(activity.advertisedTimeAtLocation) ?? false) {
+      if (!(stops[stop].plannedDepartureTime?.isAtSameMomentAs(activity.advertisedTimeAtLocation) ?? false)) {
+        if (stops[stop].plannedDepartureTime?.isBefore(activity.advertisedTimeAtLocation) ?? false) {
           stop++;
           i--;
         }
         continue;
       }
-      stops[stop].rtDepTime = activity.estimatedTimeAtLocation ??
+      stops[stop].estimatedDepartureTime = activity.estimatedTimeAtLocation ??
           activity.plannedEstimatedTimeAtLocation ??
           activity.advertisedTimeAtLocation;
-      if (activity.timeAtLocation != null) stops[stop].rtDepTime = null;
-      if (activity.trackAtLocation != null) stops[stop].track = activity.trackAtLocation;
-      if (activity.deviation.contains('Spårändrat')) stops[stop].rtTrack = activity.trackAtLocation;
-      stops[stop].depCancelled |= activity.canceled;
+      if (activity.timeAtLocation != null) stops[stop].estimatedDepartureTime = null;
+      if (activity.trackAtLocation != null) stops[stop].plannedPlatform = activity.trackAtLocation!;
+      if (activity.deviation.contains('Spårändrat')) stops[stop].estimatedPlatform = activity.trackAtLocation;
+      stops[stop].isDepartureCancelled |= activity.canceled;
       setDepartureState(activity, stops[stop].depState);
 
       if (stops[stop].arrState.state == DepartureState.normal && stops[stop].depState.state != DepartureState.normal) {
         stops[stop].arrState.state = stops[stop].depState.state;
       }
 
-      if (stops[stop].depCancelled && !stops[stop].arrCancelled && stops.take(stop).every((s) => s.depCancelled)) {
-        stops[stop].arrCancelled = true;
+      if (stops[stop].isDepartureCancelled &&
+          !stops[stop].isArrivalCancelled &&
+          stops.take(stop).every((s) => s.isDepartureCancelled)) {
+        stops[stop].isArrivalCancelled = true;
       }
     }
 
@@ -956,7 +881,8 @@ void setTrainInfo(Iterable<TrainAnnouncement> trainJourney, List<Stop> stops, Li
       stopNotesNormalPriority[stop]?.addAll(activity.deviation);
     }
 
-    if (!(next?.advertisedTimeAtLocation.isAtSameMomentAs(stops[stop].depDateTime ?? stops[stop].arrDateTime!) ??
+    if (!(next?.advertisedTimeAtLocation
+            .isAtSameMomentAs(stops[stop].plannedDepartureTime ?? stops[stop].plannedArrivalTime!) ??
         true)) {
       stop++;
     }
@@ -965,36 +891,84 @@ void setTrainInfo(Iterable<TrainAnnouncement> trainJourney, List<Stop> stops, Li
   var lastReport = trainJourney.lastWhereOrNull((t) => t.timeAtLocation != null);
   if (lastReport != null) {
     var lastStopIndex = stops.indexWhere((s) =>
-        (lastReport.activityType == 'Ankomst' ? s.arrDateTime : s.depDateTime)
+        (lastReport.activityType == 'Ankomst' ? s.plannedArrivalTime : s.plannedDepartureTime)
             ?.isAtSameMomentAs(lastReport.advertisedTimeAtLocation) ??
         false);
     for (int i = 0; i < lastStopIndex; i++) {
-      stops[i].rtArrTime = null;
-      stops[i].rtDepTime = null;
+      stops[i].estimatedArrivalTime = null;
+      stops[i].estimatedDepartureTime = null;
     }
   }
 }
 
-Future<JourneyDetail?> getJourneyDetailExtra(JourneyDetailRef ref) async {
-  var response = reseplaneraren.getJourneyDetail(ref.ref);
+Future<void> setTripLegTrainInfo(Iterable<Journey> journeys) async {
+  if (journeys.any((journey) => journey.tripLegs.any((leg) => leg.serviceJourney.isTrain))) {
+    var trainLegs = journeys.expand((journey) => journey.tripLegs).where((leg) => leg.serviceJourney.isTrain);
+    var trainActivities = await Trafikverket.getTrainTrips(trainLegs
+        .map((l) => TrainLegRef(l.serviceJourney.line.trainNumber!, l.plannedDepartureTime, l.plannedArrivalTime))
+        .toSet());
 
-  if (!isTrainType(ref.type)) await reseplaneraren.setMgateExtra(ref.evaDateTime, ref.evaId, response);
+    for (TrainAnnouncement activity in trainActivities ?? []) {
+      if (activity.activityType == 'Ankomst') {
+        var legs = trainLegs.where((leg) =>
+            leg.serviceJourney.line.trainNumber! == activity.advertisedTrainIdent &&
+            leg.plannedArrivalTime.isAtSameMomentAs(activity.advertisedTimeAtLocation));
+        for (var leg in legs) {
+          leg.estimatedArrivalTime = activity.estimatedTimeAtLocation ??
+              activity.plannedEstimatedTimeAtLocation ??
+              activity.advertisedTimeAtLocation;
+          leg.destination.stopPoint.plannedPlatform = activity.trackAtLocation;
+          if (activity.timeAtLocation != null) leg.estimatedArrivalTime = null;
+          if (activity.deviation.contains('Spårändrat')) {
+            leg.destination.stopPoint.estimatedPlatform = activity.trackAtLocation;
+          }
+          leg.destination.isCancelled |= activity.canceled;
+          setDepartureState(activity, leg.arrState);
+        }
+      } else {
+        var legs = trainLegs.where((leg) =>
+            leg.serviceJourney.line.trainNumber! == activity.advertisedTrainIdent &&
+            leg.plannedDepartureTime.isAtSameMomentAs(activity.advertisedTimeAtLocation));
+        for (var leg in legs) {
+          leg.estimatedDepartureTime = activity.estimatedTimeAtLocation ??
+              activity.plannedEstimatedTimeAtLocation ??
+              activity.advertisedTimeAtLocation;
+          leg.origin.stopPoint.plannedPlatform = activity.trackAtLocation;
+          if (activity.timeAtLocation != null) leg.estimatedDepartureTime = null;
+          if (activity.deviation.contains('Spårändrat')) {
+            leg.origin.stopPoint.estimatedPlatform = activity.trackAtLocation;
+          }
+          leg.origin.isCancelled |= activity.canceled;
+          setDepartureState(activity, leg.depState);
+          if (activity.deviation.isNotEmpty) leg.serviceJourney.direction += ', ${activity.deviation.join(', ')}';
+        }
+      }
+    }
 
-  var journeyDetail = await response;
+    for (var trainLeg in trainLegs) {
+      trainLeg.isCancelled |= trainLeg.origin.isCancelled && trainLeg.destination.isCancelled;
+      trainLeg.isPartCancelled |= trainLeg.origin.isCancelled ^ trainLeg.destination.isCancelled;
+    }
+  }
+}
 
-  if (isTrainType(ref.type)) {
-    await trafikverket
-        .getTrainJourney(
-            ref.journeyNumber!, journeyDetail.stop.first.depDateTime!, journeyDetail.stop.last.arrDateTime!)
+Future<ServiceJourneyDetails?> getJourneyDetailExtra(DetailsRef ref) async {
+  var response = PlaneraResa.details(
+      ref, {DepartureDetailsIncludeType.serviceJourneyCalls, DepartureDetailsIncludeType.serviceJourneyCoordinates});
+
+  var journeyDetails = await response;
+
+  if (ref.serviceJourney.isTrain) {
+    await Trafikverket.getTrainJourney(ref.serviceJourney.line.trainNumber!,
+            journeyDetails.firstCall!.plannedDepartureTime!, journeyDetails.lastCall!.plannedArrivalTime!)
         .then((trainJourney) {
       if (trainJourney == null) return;
-      var stops = journeyDetail.stop.toList(growable: false);
-      setTrainInfo(trainJourney, stops, null, null);
-      journeyDetail.stop = stops;
+      var allStops = journeyDetails.allCalls.toList(growable: false);
+      setTrainInfo(trainJourney, allStops, null, null);
     });
   }
 
-  return journeyDetail;
+  return journeyDetails;
 }
 
 void setDepartureState(TrainAnnouncement activity, DepartureStateMixin departure) {
@@ -1009,7 +983,7 @@ class SystemGestureArea extends StatelessWidget {
   final Widget child;
   final EdgeInsets systemGestureInsets;
 
-  const SystemGestureArea(this.systemGestureInsets, {required this.child, Key? key}) : super(key: key);
+  const SystemGestureArea(this.systemGestureInsets, {required this.child, super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -1026,10 +1000,6 @@ class SystemGestureArea extends StatelessWidget {
     );
   }
 }
-
-bool anyStopWithoutRtInfo(Iterable<Stop> stops) => stops
-    .skipWhile((stop) => (stop.rtDepTime ?? stop.rtArrTime) == null)
-    .any((stop) => (stop.rtDepTime ?? stop.rtArrTime) == null);
 
 const List<int> tramStops = [
   1050, 1200, 1450, 1620, 1690, 1745, 1850, 1900, 2150, 2170, 2200, 2210, 2370, 2470, 2540, 2630, 2670, 2730, 2790,
@@ -1055,20 +1025,22 @@ const List<int> boatStops = [
   26190, 26410, 26411, 26420, 26421, 26422, 26430 // boatStops
 ];
 
-IconData getStopIcon(String stopId) {
-  int extId = int.parse(stopId.substring(7, 13));
+IconData getStopIcon(StopLocation stop) {
+  if (!stop.isStopArea) return Icons.location_city;
+  int extId = int.parse(stop.gid.substring(7, 13));
   if (binarySearch(tramStops, extId) >= 0) return Icons.tram;
   if (binarySearch(trainStops, extId) >= 0) return Icons.directions_train;
   if (binarySearch(boatStops, extId) >= 0) return Icons.directions_boat;
   return Icons.directions_bus;
 }
 
-String getStopIconString(String stopId) {
-  int extId = int.parse(stopId.substring(7, 13));
-  if (binarySearch(tramStops, extId) >= 0) return 'tram';
-  if (binarySearch(trainStops, extId) >= 0) return 'train';
-  if (binarySearch(boatStops, extId) >= 0) return 'boat';
-  return 'bus';
+String getStopIconString(StopLocation stop) {
+  return switch (getStopIcon(stop)) {
+    Icons.tram => 'tram',
+    Icons.directions_train => 'train',
+    Icons.directions_boat => 'boat',
+    _ => 'bus'
+  };
 }
 
 Iterable<T> merge<T>(List<T> a, List<T> b, Comparator<T> comparator) {
@@ -1126,6 +1098,8 @@ class Wrapper<T> {
   Wrapper(this.element);
 }
 
+enum MenuAction { addToHomeScreen, buyTicket, showEarlierJourneys, showEarlierDepartures, showMoreDepartures }
+
 const platform = MethodChannel('ga.edvin.resecentrum');
 
 Future<void> createShortcut(BuildContext context, String uri, String label, String icon, String? summary) async {
@@ -1151,7 +1125,7 @@ Future<void> createShortcut(BuildContext context, String uri, String label, Stri
                 if (summary != null) const SizedBox(height: 10),
                 if (summary != null)
                   Text(summary,
-                      style: Theme.of(context).textTheme.bodyText2?.copyWith(color: Theme.of(context).hintColor))
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).hintColor))
               ],
             ),
           ),
@@ -1188,26 +1162,23 @@ Future<TimeOfDay?> showNativeTimePicker(TimeOfDay initialTime) async {
 }
 
 Location? parseLocation(Map<String, String> params, String? prefix) {
-  if (params.containsKey(_addPrefix('id', prefix))) {
-    return StopLocation.fromJson({
-      'id': params[_addPrefix('id', prefix)],
-      'name': params[_addPrefix('name', prefix)],
-      'lat': params[_addPrefix('lat', prefix)],
-      'lon': params[_addPrefix('lon', prefix)]
-    });
-  } else if (params.containsKey(_addPrefix('type', prefix))) {
-    return CoordLocation.fromJson({
-      'type': params[_addPrefix('type', prefix)],
-      'name': params[_addPrefix('name', prefix)],
-      'lat': params[_addPrefix('lat', prefix)],
-      'lon': params[_addPrefix('lon', prefix)]
-    });
-  } else if (params.containsKey(_addPrefix('currentLocation', prefix))) {
-    return CurrentLocation();
+  try {
+    if (params.containsKey(addPrefix('id', prefix))) {
+      return StopLocation.fromParams(params, prefix);
+    } else if (params.containsKey(addPrefix('type', prefix))) {
+      return CoordLocation.fromParams(params, prefix);
+    } else if (params.containsKey(addPrefix('currentLocation', prefix))) {
+      return CurrentLocation();
+    }
+  } catch (error, stackTrace) {
+    if (kDebugMode) {
+      print(error);
+      print(stackTrace);
+    }
   }
   return null;
 }
 
-String _addPrefix(String str, String? prefix) {
+String addPrefix(String str, String? prefix) {
   return prefix == null ? str : prefix + str.capitalize();
 }

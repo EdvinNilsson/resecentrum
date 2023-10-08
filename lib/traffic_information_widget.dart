@@ -9,7 +9,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'utils.dart';
 
 class TrafficInformationWidget extends StatefulWidget {
-  const TrafficInformationWidget({Key? key}) : super(key: key);
+  const TrafficInformationWidget({super.key});
 
   @override
   TrafficInformationState createState() => TrafficInformationState();
@@ -29,16 +29,17 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..enableZoom(false)
-      ..setNavigationDelegate(NavigationDelegate(
-          onPageFinished: (s) => setState(() => _isLoading = false),
-          onWebResourceError: (e) => setState(() => _error = e),
-          onNavigationRequest: (NavigationRequest request) {
-            if (request.url.startsWith(url)) {
-              return NavigationDecision.navigate;
-            }
-            _launchURL(context, request.url);
-            return NavigationDecision.prevent;
-          }),
+      ..setNavigationDelegate(
+        NavigationDelegate(
+            onPageFinished: (s) => setState(() => _isLoading = false),
+            onWebResourceError: (e) => setState(() => _error = e),
+            onNavigationRequest: (NavigationRequest request) {
+              if (request.url.startsWith(url)) {
+                return NavigationDecision.navigate;
+              }
+              _launchURL(context, request.url);
+              return NavigationDecision.prevent;
+            }),
       );
     _load();
   }
@@ -48,9 +49,7 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
     _controller.setBackgroundColor(Theme.of(context).canvasColor);
     return Stack(
       children: [
-        SafeArea(
-          child: WebViewWidget(controller: _controller)
-        ),
+        SafeArea(child: WebViewWidget(controller: _controller)),
         if (_isLoading) loadingPage(),
         if (_error != null)
           Container(
@@ -97,8 +96,8 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
         _controller.loadHtmlString(res.data, baseUrl: url);
       }
       setState(() => _isLoading = false);
-    } on DioError catch (e) {
-      setState(() => _error = e);
+    } on DioException catch (error) {
+      setState(() => _error = error);
     }
   }
 }

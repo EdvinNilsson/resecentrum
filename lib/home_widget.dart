@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:maplibre_gl/mapbox_gl.dart';
 import 'package:uni_links/uni_links.dart';
 
 import 'departure_board_result_widget.dart';
@@ -10,8 +11,8 @@ import 'departure_board_widget.dart';
 import 'extensions.dart';
 import 'main.dart';
 import 'map_widget.dart';
+import 'network/planera_resa.dart';
 import 'options_panel.dart';
-import 'reseplaneraren.dart';
 import 'traffic_information_widget.dart';
 import 'trip_result_widget.dart';
 import 'trip_widget.dart';
@@ -20,7 +21,7 @@ import 'utils.dart';
 bool _initialUriIsHandled = false;
 
 class Home extends StatefulWidget {
-  const Home({Key? key}) : super(key: key);
+  const Home({super.key});
 
   @override
   State<StatefulWidget> createState() => HomeState();
@@ -54,23 +55,46 @@ class HomeState extends State<Home> {
 
   @override
   Widget build(BuildContext context) {
+    var appbar = AppBar(
+      centerTitle: true,
+      title: Text(_pageTitles[_currentIndex]),
+    );
+    var landscape = MediaQuery.of(context).orientation == Orientation.landscape;
     return Scaffold(
-      appBar: AppBar(
-        centerTitle: true,
-        title: Text(_pageTitles[_currentIndex]),
+      appBar: appbar,
+      body: SafeArea(
+        child: Row(
+          children: [
+            if (landscape)
+              NavigationRail(
+                onDestinationSelected: _onTabTapped,
+                labelType: NavigationRailLabelType.all,
+                destinations: const [
+                  NavigationRailDestination(icon: Icon(Icons.tram), label: Text('Sök resa')),
+                  NavigationRailDestination(icon: Icon(Icons.departure_board), label: Text('Nästa tur')),
+                  NavigationRailDestination(icon: Icon(Icons.error_outline), label: Text('Trafikinfo')),
+                  NavigationRailDestination(icon: Icon(Icons.map), label: Text('Karta')),
+                ],
+                selectedIndex: _currentIndex,
+                backgroundColor: Theme.of(context).canvasColor,
+              ),
+            Expanded(child: _tabs[_currentIndex]),
+          ],
+        ),
       ),
-      body: _tabs[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        onTap: _onTabTapped,
-        currentIndex: _currentIndex,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.tram), label: 'Sök resa'),
-          BottomNavigationBarItem(icon: Icon(Icons.departure_board), label: 'Nästa tur'),
-          BottomNavigationBarItem(icon: Icon(Icons.error_outline), label: 'Trafikinfo'),
-          BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Karta')
-        ],
-      ),
+      bottomNavigationBar: !landscape
+          ? BottomNavigationBar(
+              onTap: _onTabTapped,
+              currentIndex: _currentIndex,
+              type: BottomNavigationBarType.fixed,
+              items: const [
+                BottomNavigationBarItem(icon: Icon(Icons.tram), label: 'Sök resa'),
+                BottomNavigationBarItem(icon: Icon(Icons.departure_board), label: 'Nästa tur'),
+                BottomNavigationBarItem(icon: Icon(Icons.error_outline), label: 'Trafikinfo'),
+                BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Karta'),
+              ],
+            )
+          : null,
     );
   }
 
@@ -98,12 +122,13 @@ class HomeState extends State<Home> {
     if (uri.scheme == 'geo') {
       var splits = uri.path.split(',');
       double? lat = parseDouble(splits.tryElementAt(0));
-      double? lon = parseDouble(splits.tryElementAt(1));
-      if (lat != null && lon != null) {
+      double? lng = parseDouble(splits.tryElementAt(1));
+      if (lat != null && lng != null) {
         try {
-          var location = await getLocationFromCoord(lat, lon, stopMaxDist: 100);
+          var location = await getLocationFromCoord(LatLng(lat, lng), stopMaxDist: 100);
           setTripLocation(location, isOrigin: false);
         } on DisplayableError catch (e) {
+          if (!context.mounted) return;
           noLocationFound(context, description: e.description ?? e.message);
         }
       }

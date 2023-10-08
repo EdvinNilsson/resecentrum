@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 
 import 'main.dart';
-import 'reseplaneraren.dart';
+import 'network/planera_resa.dart';
 
 part 'favorites.g.dart';
 
@@ -124,6 +124,12 @@ void setTripFavorite(TripHistory trip, bool favorite) {
 }
 
 Iterable<TripHistory> get tripHistory => _trips;
+
+void moveFavoriteTripToTop() {
+  var favoriteTrips = _trips.where((trip) => trip.favorite);
+  var historyTrips = _trips.where((trip) => !trip.favorite);
+  _trips = favoriteTrips.followedBy(historyTrips).toList();
+}
 
 int _firstIndexOf<T>(Iterable<T> a, T key, Comparator<T> comparator) {
   int lo = 0, hi = a.length - 1, lowest = -1;

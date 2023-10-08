@@ -4,43 +4,48 @@ import 'package:hive/hive.dart';
 import 'extensions.dart';
 import 'location_searcher.dart';
 import 'main.dart';
-import 'reseplaneraren.dart';
+import 'network/planera_resa.dart';
 import 'utils.dart';
 
 abstract class BoxOption {
   late Box box;
 }
 
-abstract class TripOptions with ChangeMarginGetter, ServicesGetter, WheelchairGetter, ViaGetter, OptionsSummary {}
+abstract class TripOptions
+    with ChangeMarginGetter, ServicesGetter, IncludeNearbyStopsGetter, ViaGetter, WalkDistanceGetter, OptionsSummary {}
 
-abstract class DepartureBoardOptions with IncludeArrivalGetter, ServicesGetter, OptionsSummary {}
+abstract class DepartureBoardOptions with IncludeArrivalGetter, OptionsSummary {}
 
-abstract class ChangeMarginGetter {
+abstract mixin class ChangeMarginGetter {
   int? get changeMarginMinutes;
 }
 
-abstract class ServicesGetter {
+abstract mixin class ServicesGetter {
   List<bool> get services;
 }
 
-abstract class WheelchairGetter {
-  bool get wheelchair;
+abstract mixin class IncludeNearbyStopsGetter {
+  bool get includeNearbyStops;
 }
 
-abstract class ViaGetter {
+abstract mixin class ViaGetter {
   StopLocation? get via;
 }
 
-abstract class IncludeArrivalGetter {
+abstract mixin class IncludeArrivalGetter {
   bool get includeArrivals;
 }
 
-abstract class OptionsSummary {
+abstract mixin class WalkDistanceGetter {
+  int? get maxWalkDistance;
+}
+
+abstract mixin class OptionsSummary {
   String? get summary;
 }
 
 class BoxTripOptions extends BoxOption
-    with ChangeMarginOption, ServicesOption, WheelchairOption, TripOptionsSummary
+    with ChangeMarginOption, ServicesOption, IncludeNearbyStopsOption, WalkDistanceOption, TripOptionsSummary
     implements TripOptions {
   BoxTripOptions() {
     box = tripBox;
@@ -70,7 +75,10 @@ class ParamTripOptions extends TripOptions with TripOptionsSummary {
   StopLocation? get via => parseLocation(params, 'via') as StopLocation?;
 
   @override
-  bool get wheelchair => params['wheelchair'] == 'true';
+  bool get includeNearbyStops => params['includeNearbyStops'] != 'false';
+
+  @override
+  int? get maxWalkDistance => parseInt(params['maxWalkDistance']);
 }
 
 mixin TripOptionsSummary implements TripOptions {
@@ -87,9 +95,11 @@ mixin TripOptionsSummary implements TripOptions {
       changes.add('Bytesmarginal ($durationString)');
     }
 
-    if (!services.every((s) => s)) changes.add('Färdmedelsfilter');
+    if (!services.all()) changes.add('Färdmedelsfilter');
 
-    if (wheelchair) changes.add('Rullstolsplats');
+    if (!includeNearbyStops) changes.add('Gå inte till närliggande hållplatser');
+
+    if (maxWalkDistance != null && includeNearbyStops) changes.add('Gå max ${getDistanceString(maxWalkDistance!)}');
 
     return changes.isNotEmpty ? changes.join(', ') : null;
   }
@@ -110,18 +120,12 @@ class ParamDepartureBoardOptions extends DepartureBoardOptions with DepartureBoa
 
   @override
   bool get includeArrivals => params['includeArrivals'] == 'true';
-
-  @override
-  List<bool> get services =>
-      params['service']?.split('').map((s) => s == '1').toList(growable: false) ??
-      List.filled(serviceButtons.length, true);
 }
 
 mixin DepartureBoardOptionsSummary implements DepartureBoardOptions {
   @override
   String? get summary {
     List<String> changes = [];
-    if (!services.every((s) => s)) changes.add('Färdmedelsfilter');
     if (includeArrivals) changes.add('Inkluderar ankomster');
     return changes.isNotEmpty ? changes.join(', ') : null;
   }
@@ -148,7 +152,7 @@ mixin ServicesOption on BoxOption implements ServicesGetter {
 class ServiceButtons extends StatefulWidget {
   final ServicesOption servicesOption;
 
-  const ServiceButtons(this.servicesOption, {Key? key}) : super(key: key);
+  const ServiceButtons(this.servicesOption, {super.key});
 
   @override
   State<ServiceButtons> createState() => _ServiceButtonsState();
@@ -201,11 +205,38 @@ mixin ChangeMarginOption on BoxOption implements ChangeMarginGetter {
   set changeMarginMinutes(int? value) => box.put('changeMarginMinutes', value);
 }
 
-mixin WheelchairOption on BoxOption implements WheelchairGetter {
+mixin IncludeNearbyStopsOption on BoxOption implements IncludeNearbyStopsGetter {
   @override
-  bool get wheelchair => box.get('wheelchair', defaultValue: false);
+  bool get includeNearbyStops => box.get('includeNearbyStops', defaultValue: true);
 
-  set wheelchair(bool value) => box.put('wheelchair', value);
+  set includeNearbyStops(bool value) => box.put('includeNearbyStops', value);
+}
+
+mixin WalkDistanceOption on BoxOption implements WalkDistanceGetter {
+  WalkDistance get walkDistanceDropdownValue =>
+      WalkDistance.values[box.get('maxWalkDistance', defaultValue: WalkDistance.max2km.index)];
+
+  set walkDistanceDropdownValue(WalkDistance value) => box.put('maxWalkDistance', value.index);
+
+  @override
+  int? get maxWalkDistance {
+    if (walkDistanceDropdownValue == WalkDistance.custom) return box.get('maxWalkDistanceMeters');
+    return walkDistanceDropdownValue.meters;
+  }
+
+  set maxWalkDistance(int? value) => box.put('maxWalkDistanceMeters', value);
+}
+
+enum WalkDistance { max500m, max1km, max2km, max5km, custom }
+
+extension WalkDistanceExt on WalkDistance {
+  int? get meters => switch (this) {
+        WalkDistance.max500m => 500,
+        WalkDistance.max1km => 1000,
+        WalkDistance.max2km => null,
+        WalkDistance.max5km => 5000,
+        WalkDistance.custom => null
+      };
 }
 
 enum ChangeMargin { short, normal, custom }
@@ -228,7 +259,7 @@ List<Service> serviceButtons = const [
 class TripOptionsPanel extends StatefulWidget implements OptionsPanel {
   final BoxTripOptions tripOptions;
 
-  const TripOptionsPanel(this.tripOptions, {Key? key}) : super(key: key);
+  const TripOptionsPanel(this.tripOptions, {super.key});
 
   @override
   State<TripOptionsPanel> createState() => _TripOptionsPanelState();
@@ -241,25 +272,40 @@ class _TripOptionsPanelState extends _OptionsPanelState<TripOptionsPanel> {
   static String customChangeMarginDurationString(int minutes) =>
       '${getDurationString(Duration(minutes: minutes))}${minutes >= 5 ? ' extra marginal' : ''}';
 
-  String get customText {
+  String get customChangeMarginText {
     var minutes = widget.tripOptions.changeMarginMinutes;
     return widget.tripOptions.changeMarginDropdownValue != ChangeMargin.custom || minutes == null
         ? 'Anpassad'
         : 'Anpassad (${customChangeMarginDurationString(minutes)})';
   }
 
+  String get customWalkDistanceText {
+    var meters = widget.tripOptions.maxWalkDistance;
+    return widget.tripOptions.walkDistanceDropdownValue != WalkDistance.custom || meters == null
+        ? 'Anpassad'
+        : 'Anpassad (${getDistanceString(meters)})';
+  }
+
   _TripOptionsPanelState();
 
   @override
   List<Widget> children() {
-    var items = [
+    var changeMargins = [
       const DropdownMenuItem(value: ChangeMargin.short, child: Text('Kort (2 min)')),
       const DropdownMenuItem(value: ChangeMargin.normal, child: Text('Normal (oftast 5 min)')),
-      DropdownMenuItem(value: ChangeMargin.custom, child: Text(customText)),
+      DropdownMenuItem(value: ChangeMargin.custom, child: Text(customChangeMarginText)),
+    ];
+
+    var walkDistances = [
+      const DropdownMenuItem(value: WalkDistance.max500m, child: Text('Max 500 m')),
+      const DropdownMenuItem(value: WalkDistance.max1km, child: Text('Max 1 km')),
+      const DropdownMenuItem(value: WalkDistance.max2km, child: Text('Max 2 km')),
+      const DropdownMenuItem(value: WalkDistance.max5km, child: Text('Max 5 km')),
+      DropdownMenuItem(value: WalkDistance.custom, child: Text(customWalkDistanceText)),
     ];
 
     return [
-      const Text('Via hållplats'),
+      const Text('Res via hållplats'),
       LocationField(widget.tripOptions.viaFieldController, widget.tripOptions.viaInput, 'Via',
           onlyStops: true,
           suffixIcon: IconButton(
@@ -273,18 +319,14 @@ class _TripOptionsPanelState extends _OptionsPanelState<TripOptionsPanel> {
               _customChangeMargin().then((minutes) {
                 if (minutes == null) return;
                 widget.tripOptions.changeMarginMinutes = minutes;
-                setState(() {
-                  widget.tripOptions.changeMarginDropdownValue = ChangeMargin.custom;
-                });
+                setState(() => widget.tripOptions.changeMarginDropdownValue = ChangeMargin.custom);
               });
             } else {
               widget.tripOptions.changeMarginMinutes = newValue == ChangeMargin.short ? 2 : null;
-              setState(() {
-                widget.tripOptions.changeMarginDropdownValue = newValue!;
-              });
+              setState(() => widget.tripOptions.changeMarginDropdownValue = newValue!);
             }
           },
-          items: items),
+          items: changeMargins),
       if (widget.tripOptions.changeMarginDropdownValue == ChangeMargin.short ||
           (widget.tripOptions.changeMarginMinutes ?? 5) < 5)
         Text('Med kort bytesmarginal gäller inte längre rätten till förseningsersättning',
@@ -294,13 +336,29 @@ class _TripOptionsPanelState extends _OptionsPanelState<TripOptionsPanel> {
       const SizedBox(height: 5),
       ServiceButtons(widget.tripOptions),
       CheckboxListTile(
-          value: widget.tripOptions.wheelchair,
-          onChanged: (newValue) {
-            setState(() {
-              widget.tripOptions.wheelchair = newValue ?? false;
-            });
-          },
-          title: const Text('Rullstolsplats'))
+        value: widget.tripOptions.includeNearbyStops,
+        onChanged: (newValue) => setState(() => widget.tripOptions.includeNearbyStops = newValue ?? true),
+        title: const Text('Jag kan gå till närliggande hållplatser'),
+      ),
+      if (widget.tripOptions.includeNearbyStops) const SizedBox(height: 5),
+      if (widget.tripOptions.includeNearbyStops) const Text('Maximal gångsträcka'),
+      if (widget.tripOptions.includeNearbyStops) const SizedBox(height: 5),
+      if (widget.tripOptions.includeNearbyStops)
+        DropdownButton<WalkDistance>(
+            value: widget.tripOptions.walkDistanceDropdownValue,
+            onChanged: (WalkDistance? newValue) {
+              if (newValue == WalkDistance.custom) {
+                _customMaxWalkDistance().then((meters) {
+                  if (meters == null) return;
+                  widget.tripOptions.maxWalkDistance = meters;
+                  setState(() => widget.tripOptions.walkDistanceDropdownValue = WalkDistance.custom);
+                });
+              } else {
+                widget.tripOptions.maxWalkDistance = newValue?.meters;
+                setState(() => widget.tripOptions.walkDistanceDropdownValue = newValue!);
+              }
+            },
+            items: walkDistances),
     ];
   }
 
@@ -309,25 +367,38 @@ class _TripOptionsPanelState extends _OptionsPanelState<TripOptionsPanel> {
     return minutes != null && minutes > 0 && minutes <= 600 ? minutes : null;
   }
 
+  int? _parseWalkDistance(String text) {
+    int? meters = int.tryParse(text);
+    return meters != null && meters >= 0 && meters <= 10000 ? meters : null;
+  }
+
   Future<int?> _customChangeMargin() async {
+    return _customValueDialog('Ange bytesmarginal', 'Ange antal minuter', _parseChangeMargin);
+  }
+
+  Future<int?> _customMaxWalkDistance() async {
+    return _customValueDialog('Ange maximala gångsträcka', 'Ange antal meter', _parseWalkDistance);
+  }
+
+  Future<int?> _customValueDialog(String title, String hintText, int? Function(String) parseValue) async {
     var textController = TextEditingController();
     var valid = ValueNotifier<bool>(false);
     return showDialog<int?>(
         context: context,
         builder: (context) {
           return AlertDialog(
-            title: const Text('Ange bytesmarginal'),
+            title: Text(title),
             content: TextField(
               autofocus: true,
               keyboardType: const TextInputType.numberWithOptions(signed: false, decimal: false),
-              onChanged: (value) => valid.value = _parseChangeMargin(value) != null,
+              onChanged: (value) => valid.value = parseValue(value) != null,
               onSubmitted: (value) {
-                var minutes = _parseChangeMargin(value);
-                if (minutes == null) return;
-                Navigator.pop(context, minutes);
+                var parsed = parseValue(value);
+                if (parsed == null) return;
+                Navigator.pop(context, parsed);
               },
               controller: textController,
-              decoration: const InputDecoration(hintText: 'Ange antal minuter'),
+              decoration: InputDecoration(hintText: hintText),
             ),
             actions: [
               TextButton(
@@ -337,7 +408,7 @@ class _TripOptionsPanelState extends _OptionsPanelState<TripOptionsPanel> {
               ValueListenableBuilder(
                 valueListenable: valid,
                 builder: (BuildContext context, bool value, Widget? child) => TextButton(
-                  onPressed: value ? () => Navigator.pop(context, _parseChangeMargin(textController.text)) : null,
+                  onPressed: value ? () => Navigator.pop(context, parseValue(textController.text)) : null,
                   child: Text(MaterialLocalizations.of(context).okButtonLabel),
                 ),
               ),
@@ -350,7 +421,7 @@ class _TripOptionsPanelState extends _OptionsPanelState<TripOptionsPanel> {
 class DepartureBoardOptionsPanel extends StatefulWidget implements OptionsPanel {
   final BoxDepartureBoardOptions departureBoardOptions;
 
-  const DepartureBoardOptionsPanel(this.departureBoardOptions, {Key? key}) : super(key: key);
+  const DepartureBoardOptionsPanel(this.departureBoardOptions, {super.key});
 
   @override
   State<DepartureBoardOptionsPanel> createState() => _DepartureBoardOptionsPanel();
@@ -365,9 +436,6 @@ class _DepartureBoardOptionsPanel extends _OptionsPanelState<DepartureBoardOptio
   @override
   List<Widget> children() {
     return [
-      const Text('Färdmedel'),
-      const SizedBox(height: 5),
-      ServiceButtons(widget.departureBoardOptions),
       CheckboxListTile(
         value: widget.departureBoardOptions.includeArrivals,
         onChanged: (newValue) {
@@ -382,7 +450,7 @@ class _DepartureBoardOptionsPanel extends _OptionsPanelState<DepartureBoardOptio
 }
 
 abstract class OptionsPanel extends StatefulWidget implements OptionsSummary {
-  const OptionsPanel({Key? key}) : super(key: key);
+  const OptionsPanel({super.key});
 }
 
 abstract class _OptionsPanelState<T extends OptionsPanel> extends State<T> {
@@ -397,7 +465,7 @@ abstract class _OptionsPanelState<T extends OptionsPanel> extends State<T> {
       expandedHeaderPadding: EdgeInsets.zero,
       expansionCallback: (int index, bool isExpanded) {
         setState(() {
-          expanded = !isExpanded;
+          expanded = isExpanded;
         });
       },
       children: [

@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'departure_board_result_widget.dart';
 import 'location_searcher.dart';
 import 'main.dart';
+import 'network/planera_resa.dart';
 import 'options_panel.dart';
-import 'reseplaneraren.dart';
 import 'trip_widget.dart';
 import 'utils.dart';
 
@@ -22,7 +22,7 @@ class DepartureBoardWidget extends StatelessWidget {
   final FocusNode _stopFocusNode = FocusNode();
   final FocusNode _directionFocusNode = FocusNode();
 
-  DepartureBoardWidget({Key? key}) : super(key: key);
+  DepartureBoardWidget({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -44,6 +44,7 @@ class DepartureBoardWidget extends StatelessWidget {
                             try {
                               await currentLocation.location(onlyStops: true, forceRefresh: true);
                             } on DisplayableError catch (e) {
+                              if (!context.mounted) return;
                               noLocationFound(context, onlyStops: true, description: e.description ?? e.message);
                             }
                           },
