@@ -580,40 +580,6 @@ class ServiceJourneyDetails {
 
     lastCallsOnServiceJourney.last.plannedDepartureTime = null;
     lastCallsOnServiceJourney.last.estimatedDepartureTime = null;
-
-    // Temporary workaround for missing estimated times until it is fixed in APR.
-    var now = DateTime.now();
-    var calls =
-        serviceJourneys.expand((serviceJourney) => serviceJourney.callsOnServiceJourney!).toList(growable: false);
-
-    for (int i = calls.length - 1; i >= 0; i--) {
-      var call = calls.elementAt(i);
-      var before = calls.tryElementAt(i - 1);
-
-      if (before != null &&
-          call.improvedArrivalTimeEstimation.isBefore(before.improvedArrivalTimeEstimation) &&
-          calls.getRange(0, i - 1).every((c) => (c.estimatedArrivalTime ?? c.estimatedDepartureTime) == null)) {
-        break;
-      }
-
-      if (call.plannedArrivalTime != null &&
-          !call.isCancelled &&
-          !call.isArrivalCancelled &&
-          call.estimatedArrivalTime == null &&
-          call.plannedArrivalTime!.isSameTransportDayAs(now) &&
-          call.plannedArrivalTime!.isAfter(now.subtract(const Duration(seconds: 30)))) {
-        call.estimatedArrivalTime = call.plannedArrivalTime;
-      }
-
-      if (call.plannedDepartureTime != null &&
-          !call.isCancelled &&
-          !call.isDepartureCancelled &&
-          call.estimatedDepartureTime == null &&
-          call.plannedDepartureTime!.isSameTransportDayAs(now) &&
-          call.plannedDepartureTime!.isAfter(now.subtract(const Duration(seconds: 30)))) {
-        call.estimatedDepartureTime = call.plannedDepartureTime;
-      }
-    }
   }
 }
 
