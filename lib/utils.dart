@@ -1182,3 +1182,10 @@ Location? parseLocation(Map<String, String> params, String? prefix) {
 String addPrefix(String str, String? prefix) {
   return prefix == null ? str : prefix + str.capitalize();
 }
+
+double truncatedMean(List<int> sortedList, double cutoffRatio) {
+  var start = (sortedList.length * cutoffRatio).ceil();
+  var end = (sortedList.length * (1.0 - cutoffRatio)).floor();
+  if (start >= end) return sortedList.average;
+  return sortedList.getRange(start, end).average;
+}

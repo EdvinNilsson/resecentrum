@@ -315,10 +315,6 @@ Future<void> getDepartureBoard(
       }
     }
 
-    if (lastPlannedTime != null) {
-      state.departureFrequency = result.length / lastPlannedTime.difference(dateTime ?? DateTime.now()).inMinutes;
-    }
-
     var lastPass = true;
     var secondPassDone = false;
 
@@ -377,6 +373,22 @@ Future<void> getDepartureBoard(
       if (a.arrival != b.arrival) return a.arrival ? -1 : 1;
       return a.serviceJourney.gid.compareTo(b.serviceJourney.gid);
     });
+
+    if (result.length > 1) {
+      var deltaTimes = <int>[];
+
+      var previousDeparture = result.first;
+      for (var departure in result.skip(1)) {
+        var deltaTime = departure.time.difference(previousDeparture.time).inMinutes;
+        deltaTimes.add(deltaTime);
+        previousDeparture = departure;
+      }
+
+      deltaTimes.sort();
+      var avgPeriod = truncatedMean(deltaTimes, 0.1);
+
+      state.departureFrequency = 1.0 / avgPeriod;
+    }
 
     if (!secondPassDone) streamController.add(result);
 
