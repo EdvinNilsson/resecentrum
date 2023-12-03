@@ -932,12 +932,17 @@ class TripLeg extends JourneyLeg with JourneyLegOrder {
   bool get isDepartureCancelled =>
       origin.isCancelled ||
       isCancelled ||
-      (isPartCancelled && origin.stopPoint.platform == null && estimatedDepartureTime == null);
+      (isPartCancelled &&
+          estimatedDepartureTime == null &&
+          notes.firstWhereOrNull((note) => note.text.contains('Färd inställd '))?.text.contains(originName) == true);
 
   bool get isArrivalCancelled =>
       destination.isCancelled ||
       isCancelled ||
-      (isPartCancelled && destination.stopPoint.platform == null && estimatedArrivalTime == null);
+      (isPartCancelled &&
+          estimatedArrivalTime == null &&
+          notes.firstWhereOrNull((note) => note.text.contains('Färd inställd '))?.text.contains(destinationName) ==
+              true);
 
   TripLeg.fromJson(Json json) : super.fromJson(json) {
     origin = LegCall.fromJson(json['origin']);

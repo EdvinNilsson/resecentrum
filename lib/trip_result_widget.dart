@@ -63,46 +63,51 @@ class _TripResultWidgetState extends State<TripResultWidget> {
     var bgColor = Theme.of(context).cardColor;
     return Scaffold(
         appBar: AppBar(
-            title: StreamBuilder(
+          title: StreamBuilder(
+              stream: _streamController.stream,
+              builder: (context, snapshot) {
+                return tripTitle(widget._from.getName(), widget._to.getName(), via: widget._tripOptions.via?.name);
+              }),
+          actions: [
+            StreamBuilder(
                 stream: _streamController.stream,
                 builder: (context, snapshot) {
-                  return tripTitle(widget._from.getName(), widget._to.getName(), via: widget._tripOptions.via?.name);
-                }),
-            actions: supportShortcuts || _links?.previous != null
-                ? <Widget>[
-                    PopupMenuButton(
-                        onSelected: (selection) async {
-                          switch (selection) {
-                            case MenuAction.addToHomeScreen:
-                              _createShortcut(context);
-                              break;
-                            case MenuAction.showEarlierJourneys:
-                              alternativeRefresh = _addEarlierJourneys();
-                              _refreshKey.currentState?.show();
-                              break;
-                            default:
-                          }
-                        },
-                        itemBuilder: (BuildContext context) => [
-                              if (supportShortcuts)
-                                const PopupMenuItem(
-                                  value: MenuAction.addToHomeScreen,
-                                  child: ListTile(
-                                      leading: Icon(Icons.add_to_home_screen),
-                                      title: Text('Skapa genväg'),
-                                      visualDensity: VisualDensity.compact),
-                                ),
-                              if (_links?.previous != null)
-                                const PopupMenuItem(
-                                  value: MenuAction.showEarlierJourneys,
-                                  child: ListTile(
-                                      leading: Icon(Icons.history),
-                                      title: Text('Visa tidigare resor'),
-                                      visualDensity: VisualDensity.compact),
-                                )
-                            ])
-                  ]
-                : null),
+                  return supportShortcuts || _links?.previous != null
+                      ? PopupMenuButton(
+                          onSelected: (selection) async {
+                            switch (selection) {
+                              case MenuAction.addToHomeScreen:
+                                _createShortcut(context);
+                                break;
+                              case MenuAction.showEarlierJourneys:
+                                alternativeRefresh = _addEarlierJourneys();
+                                _refreshKey.currentState?.show();
+                                break;
+                              default:
+                            }
+                          },
+                          itemBuilder: (BuildContext context) => [
+                                if (supportShortcuts)
+                                  const PopupMenuItem(
+                                    value: MenuAction.addToHomeScreen,
+                                    child: ListTile(
+                                        leading: Icon(Icons.add_to_home_screen),
+                                        title: Text('Skapa genväg'),
+                                        visualDensity: VisualDensity.compact),
+                                  ),
+                                if (_links?.previous != null)
+                                  const PopupMenuItem(
+                                    value: MenuAction.showEarlierJourneys,
+                                    child: ListTile(
+                                        leading: Icon(Icons.history),
+                                        title: Text('Visa tidigare resor'),
+                                        visualDensity: VisualDensity.compact),
+                                  )
+                              ])
+                      : Container();
+                })
+          ],
+        ),
         backgroundColor: cardBackgroundColor(context),
         body: SystemGestureArea(
           MediaQuery.of(context).systemGestureInsets,
@@ -242,8 +247,8 @@ class _TripResultWidgetState extends State<TripResultWidget> {
                                             firstJourneyLeg.plannedDepartureTime,
                                             getDelay(firstJourneyLeg.plannedDepartureTime,
                                                 firstJourneyLeg.estimatedDepartureTime),
-                                            firstJourneyLeg is TripLeg ? firstJourneyLeg.isDepartureCancelled : false,
-                                            firstJourneyLeg is TripLeg ? firstJourneyLeg.depState.state : null,
+                                            journey.tripLegs.firstOrNull?.isDepartureCancelled ?? false,
+                                            journey.tripLegs.firstOrNull?.depState.state,
                                             walk: firstJourneyLeg is Link,
                                             useHintColor: true),
                                       ),
@@ -276,8 +281,8 @@ class _TripResultWidgetState extends State<TripResultWidget> {
                                           lastJourneyLeg.plannedArrivalTime,
                                           getDelay(
                                               lastJourneyLeg.plannedArrivalTime, lastJourneyLeg.estimatedArrivalTime),
-                                          lastJourneyLeg is TripLeg ? lastJourneyLeg.isArrivalCancelled : false,
-                                          lastJourneyLeg is TripLeg ? lastJourneyLeg.arrState.state : null,
+                                          journey.tripLegs.lastOrNull?.isArrivalCancelled ?? false,
+                                          journey.tripLegs.lastOrNull?.arrState.state,
                                           walk: lastJourneyLeg is Link,
                                           useHintColor: true)
                                     ]),

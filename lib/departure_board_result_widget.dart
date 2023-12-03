@@ -22,11 +22,11 @@ import 'utils.dart';
 class DepartureBoardResultWidget extends StatefulWidget {
   final Location _location;
   final StopLocation? _direction;
-  DateTime? _dateTime;
+  final DateTime? _initialDateTime;
   final DepartureBoardOptions _departureBoardOptions;
   final DepartureBoardState _state = DepartureBoardState();
 
-  DepartureBoardResultWidget(this._location, this._dateTime, this._departureBoardOptions,
+  DepartureBoardResultWidget(this._location, this._initialDateTime, this._departureBoardOptions,
       {StopLocation? direction, super.key})
       : _direction = direction;
 
@@ -36,12 +36,14 @@ class DepartureBoardResultWidget extends StatefulWidget {
 
 class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget> with WidgetsBindingObserver {
   Timer? _timer;
+  DateTime? _dateTime;
   final GlobalKey<RefreshIndicatorState> _refreshKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _dateTime = widget._initialDateTime;
     _initTimer(updateIntermittently: false);
   }
 
@@ -92,8 +94,7 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
                       case MenuAction.showEarlierDepartures:
                         var duration =
                             widget._state.departureFrequency != null ? 5.0 / widget._state.departureFrequency! : 60;
-                        widget._dateTime =
-                            (widget._dateTime ?? DateTime.now()).subtract(Duration(minutes: duration.ceil()));
+                        _dateTime = (_dateTime ?? DateTime.now()).subtract(Duration(minutes: duration.ceil()));
                         _updateDepartureBoard(addOnlyOnce: true, ignoreError: true);
                         _refreshKey.currentState?.show();
                         break;
@@ -145,7 +146,7 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
                   if (departureBoard.data!.isEmpty) return noDataPage('Inga avgångar hittades');
                   var bgColor = Theme.of(context).cardColor;
                   return CustomScrollView(slivers: [
-                    if (widget._dateTime != null && departureBoard.data!.isNotEmpty) dateBar(widget._dateTime!),
+                    if (_dateTime != null && departureBoard.data!.isNotEmpty) dateBar(_dateTime!),
                     SliverSafeArea(
                       sliver: departureBoardList(departureBoard.data!, bgColor, onTap: (context, departure) {
                         _timer?.cancel();
@@ -212,7 +213,7 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
     } else {
       stopAreaGid = (widget._location as StopLocation).gid;
     }
-    await getDepartureBoard(_departureStreamController, stopAreaGid, widget._dateTime, widget._departureBoardOptions,
+    await getDepartureBoard(_departureStreamController, stopAreaGid, _dateTime, widget._departureBoardOptions,
         widget._direction, widget._location.position, widget._state,
         addOnlyOnce: addOnlyOnce, ignoreError: ignoreError, tsSubject: _trafficSituationSubject);
   }
@@ -334,6 +335,7 @@ Future<void> getDepartureBoard(
 
     if (result.length < (state.target ?? 20) && state.timeSpan != 1439 && !secondPass) {
       state.timeSpan = 1439;
+      state.limit = null;
       getDepartureBoard(streamController, stopAreaGid, dateTime, departureBoardOptions, direction, stopPosition, state,
               secondPass: true, ignoreError: ignoreError, tsSubject: tsSubject)
           .whenComplete(() => secondPassDone = true);
@@ -530,12 +532,8 @@ Future<void> _addTrainInfo(List<Departure> result, DepartureBoardOptions departu
         activity.estimatedTimeAtLocation ??
         activity.plannedEstimatedTimeAtLocation ??
         activity.advertisedTimeAtLocation;
-    if (activity.trackAtLocation == 'x') {
-      result[i].stopPoint.plannedPlatform = null;
-    } else {
-      result[i].stopPoint.plannedPlatform = activity.trackAtLocation;
-      if (activity.deviation.contains('Spårändrat')) result[i].stopPoint.estimatedPlatform = activity.trackAtLocation;
-    }
+    result[i].stopPoint.plannedPlatform = activity.trackAtLocation;
+    if (activity.deviation.contains('Spårändrat')) result[i].stopPoint.estimatedPlatform = activity.trackAtLocation;
     result[i].isCancelled |= activity.canceled;
 
     if (activity.deviation.isNotEmpty) result[i].deviation = activity.deviation;

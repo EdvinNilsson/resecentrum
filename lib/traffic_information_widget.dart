@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_custom_tabs/flutter_custom_tabs.dart';
 import 'package:html/parser.dart';
@@ -30,16 +31,20 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..enableZoom(false)
       ..setNavigationDelegate(
-        NavigationDelegate(
-            onPageFinished: (s) => setState(() => _isLoading = false),
-            onWebResourceError: (e) => setState(() => _error = e),
-            onNavigationRequest: (NavigationRequest request) {
-              if (request.url.startsWith(url)) {
-                return NavigationDecision.navigate;
-              }
-              _launchURL(context, request.url);
-              return NavigationDecision.prevent;
-            }),
+        NavigationDelegate(onPageFinished: (s) {
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+        }, onWebResourceError: (e) {
+          if (!mounted) return;
+          if (kDebugMode) print(e);
+          setState(() => _error = e);
+        }, onNavigationRequest: (NavigationRequest request) {
+          if (request.url.startsWith(url)) {
+            return NavigationDecision.navigate;
+          }
+          _launchURL(context, request.url);
+          return NavigationDecision.prevent;
+        }),
       );
     _load();
   }

@@ -72,8 +72,9 @@ class MyApp extends StatelessWidget {
         supportedLocales: const [
           Locale('sv'),
         ],
-        theme: ThemeData(primarySwatch: createMaterialColor(primaryColor)),
+        theme: ThemeData(primarySwatch: createMaterialColor(primaryColor), useMaterial3: false),
         darkTheme: ThemeData(
+          useMaterial3: false,
           brightness: Brightness.dark,
           primaryColor: primaryColor,
           elevatedButtonTheme: ElevatedButtonThemeData(

@@ -243,7 +243,7 @@ class TripDetailsWidget extends StatelessWidget {
           const SizedBox(width: 16),
           Expanded(
               child: highlightFirstPart(leg.serviceJourney.direction,
-                  style: const TextStyle(fontWeight: FontWeight.bold), textScaleFactor: 1.1)),
+                  style: const TextStyle(fontWeight: FontWeight.bold), textScalar: const TextScaler.linear(1.1))),
           accessibilityIcon(line.isWheelchairAccessible, leg.estimatedDepartureTime ?? leg.estimatedArrivalTime,
               margin: const EdgeInsets.only(left: 8)),
         ],

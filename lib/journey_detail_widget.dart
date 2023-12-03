@@ -176,7 +176,7 @@ Future<ServiceJourneyDetailsWithTrafficSituations> getJourneyDetails(DetailsRef 
 
   List<Severity?> stopNoteIcons = List.filled(allStops.length, null, growable: false);
 
-  filteredLineTs?.forEach((ts) {
+  filteredLineTs?.followedBy(journeyTs ?? []).forEach((ts) {
     if (ts.affectedStopPoints.length >= stopPointGids.length) return;
     for (var stop in ts.affectedStopPoints) {
       int i = stopPointGids.indexWhere((stopPointGid) => stopAreaFromStopPoint(stopPointGid) == stop.stopAreaGid);
@@ -310,7 +310,7 @@ class JourneyPartNote {
 
 RenderObjectWidget journeyDetailList(ServiceJourneyDetails serviceJourneyDetails, Iterable<Icon?> stopNoteIcons,
     {void Function(BuildContext, Call)? onTap, void Function(BuildContext, Call)? onLongPress}) {
-  Iterable<Call> allStops = serviceJourneyDetails.allCalls!;
+  Iterable<Call> allStops = serviceJourneyDetails.allCalls;
 
   List<int> startOfServiceIndexes = serviceJourneyDetails.serviceJourneys
       .map((serviceJourney) => serviceJourney.callsOnServiceJourney!.first.index)

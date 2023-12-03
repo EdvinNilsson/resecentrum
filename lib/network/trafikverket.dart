@@ -266,7 +266,7 @@ class Trafikverket {
 
   static Future<TrainPositions?> getTrainPositions(Iterable<TrainPositionRef> trains) async {
     return await _callApi('''
-<QUERY sseurl="true" namespace="järnväg.trafikinfo" objecttype="TrainPosition" schemaversion="1.0" orderby="Status.Active">
+<QUERY sseurl="true" namespace="järnväg.trafikinfo" objecttype="TrainPosition" schemaversion="1.1" orderby="Status.Active">
     <FILTER>
         <OR>
             ${trains.map((train) => '<EQ name="Train.AdvertisedTrainNumber" value="${train.trainNumber}" />').join()}

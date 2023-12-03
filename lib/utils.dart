@@ -484,13 +484,16 @@ Widget iconAndText(IconData icon, String text,
 Widget tripTitle(String from, String to, {String? via}) {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
-    children: [highlightFirstPart(from, textScaleFactor: 0.8), highlightFirstPart(to, textScaleFactor: 0.8)]
-        .addIf(via != null, Text('via $via', textScaleFactor: 0.6, style: const TextStyle(color: Colors.white60))),
+    children: [
+      highlightFirstPart(from, textScalar: const TextScaler.linear(0.8)),
+      highlightFirstPart(to, textScalar: const TextScaler.linear(0.8))
+    ].addIf(via != null,
+        Text('via $via', textScaler: const TextScaler.linear(0.6), style: const TextStyle(color: Colors.white60))),
   );
 }
 
 class SegmentedControlController extends ValueNotifier<int> {
-  SegmentedControlController(int value) : super(value);
+  SegmentedControlController(super.value);
 }
 
 class SegmentedControl extends StatefulWidget {
@@ -805,10 +808,10 @@ bool isPresent(DateTime startTime, DateTime? endTime, DateTime start, DateTime e
   return startTime.isBefore(end) && (endTime?.isAfter(start) ?? true);
 }
 
-Widget highlightFirstPart(String text, {TextStyle? style, double? textScaleFactor, TextOverflow? overflow}) {
+Widget highlightFirstPart(String text, {TextStyle? style, TextScaler? textScalar, TextOverflow? overflow}) {
   return Builder(
       builder: (BuildContext context) => Text.rich(highlightFirstPartSpan(text, style, context),
-          style: style, overflow: overflow, textScaleFactor: textScaleFactor));
+          style: style, overflow: overflow, textScaler: textScalar));
 }
 
 TextSpan highlightFirstPartSpan(String text, TextStyle? style, BuildContext context) {
@@ -844,7 +847,7 @@ void setTrainInfo(Iterable<TrainAnnouncement> trainJourney, List<Call> stops, Li
       if (activity.timeAtLocation != null) stops[stop].estimatedArrivalTime = null;
       if (activity.trackAtLocation != null) stops[stop].plannedPlatform = activity.trackAtLocation!;
       if (activity.deviation.contains('Spårändrat')) stops[stop].estimatedPlatform = activity.trackAtLocation;
-      stops[stop].isArrivalCancelled |= activity.canceled;
+      stops[stop].isArrivalCancelled = activity.canceled;
       setDepartureState(activity, stops[stop].arrState);
     } else {
       if (!(stops[stop].plannedDepartureTime?.isAtSameMomentAs(activity.advertisedTimeAtLocation) ?? false)) {
@@ -860,7 +863,7 @@ void setTrainInfo(Iterable<TrainAnnouncement> trainJourney, List<Call> stops, Li
       if (activity.timeAtLocation != null) stops[stop].estimatedDepartureTime = null;
       if (activity.trackAtLocation != null) stops[stop].plannedPlatform = activity.trackAtLocation!;
       if (activity.deviation.contains('Spårändrat')) stops[stop].estimatedPlatform = activity.trackAtLocation;
-      stops[stop].isDepartureCancelled |= activity.canceled;
+      stops[stop].isDepartureCancelled = activity.canceled;
       setDepartureState(activity, stops[stop].depState);
 
       if (stops[stop].arrState.state == DepartureState.normal && stops[stop].depState.state != DepartureState.normal) {
@@ -922,7 +925,7 @@ Future<void> setTripLegTrainInfo(Iterable<Journey> journeys) async {
           if (activity.deviation.contains('Spårändrat')) {
             leg.destination.stopPoint.estimatedPlatform = activity.trackAtLocation;
           }
-          leg.destination.isCancelled |= activity.canceled;
+          leg.destination.isCancelled = activity.canceled;
           setDepartureState(activity, leg.arrState);
         }
       } else {
@@ -938,7 +941,7 @@ Future<void> setTripLegTrainInfo(Iterable<Journey> journeys) async {
           if (activity.deviation.contains('Spårändrat')) {
             leg.origin.stopPoint.estimatedPlatform = activity.trackAtLocation;
           }
-          leg.origin.isCancelled |= activity.canceled;
+          leg.origin.isCancelled = activity.canceled;
           setDepartureState(activity, leg.depState);
           if (activity.deviation.isNotEmpty) leg.serviceJourney.direction += ', ${activity.deviation.join(', ')}';
         }
