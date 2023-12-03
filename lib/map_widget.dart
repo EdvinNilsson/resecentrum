@@ -38,9 +38,10 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
 
   final List<ServiceJourneyDetails> _journeyDetails = [];
   final Map<String, ServiceJourney> _journeyDetailById = {};
+  final Map<String, String> _nextJourneyId = {};
   final List<String> _journeyIds = [];
   final List<TrainPositionRef> _trains = [];
-  final List<Vehicle> _vehicles = [];
+  final Map<String, Vehicle> _vehicles = {};
   final List<MapFocusable<Call>> _stops = [];
   final List<MapFocusable<Walk>> _walks = [];
 
@@ -302,7 +303,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
             .firstWhere((stop) => stop.stopPoint.gid == stopAreaGid))
         .map((s) => s.position);
 
-    var vehiclePos = _vehicles.map((v) => v.vehiclePosition.position);
+    var vehiclePos = _vehicles.values.map((v) => v.vehiclePosition.position);
 
     LatLngBounds? bounds;
 
@@ -387,7 +388,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   }
 
   void _onFeatureTap(dynamic featureId, math.Point<double> point, LatLng latLng) async {
-    var vehicle = _vehicles.firstWhereOrNull((v) => v.journeyId == featureId);
+    var vehicle = _vehicles.values.firstWhereOrNull((v) => v.journeyId == featureId);
     if (vehicle == null) return;
     _showVehicleSheet(vehicle);
   }
@@ -489,8 +490,14 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     _addStops(journeyDetails, journeyPart, focus);
     _addPolylines(journeyDetails, journeyPart);
     _journeyDetails.add(journeyDetails);
-    for (var serviceJourney in journeyDetails.serviceJourneys) {
+    for (var i = 0; i < journeyDetails.serviceJourneys.length; i++) {
+      var serviceJourney = journeyDetails.serviceJourneys[i];
+
       _journeyDetailById[serviceJourney.gid] = serviceJourney;
+
+      var nextServiceJourney = journeyDetails.serviceJourneys.tryElementAt(i + 1);
+      if (nextServiceJourney != null) _nextJourneyId[serviceJourney.gid] = nextServiceJourney.gid;
+
       if (serviceJourney.isTrain) {
         _trains.add(TrainPositionRef(serviceJourney.gid, serviceJourney.line.trainNumber!));
       } else {
@@ -637,7 +644,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
 
   Iterable<Map<String, dynamic>> _getVehicleGeoJsonFeatures(Duration deltaTime) {
     double dt = deltaTime.inMicroseconds / (Duration.microsecondsPerSecond * 2);
-    return _vehicles.map((vehicle) {
+    return _vehicles.values.map((vehicle) {
       if (vehicle.useInterpolation) {
         vehicle.t += dt;
 
@@ -665,19 +672,16 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   }
 
   Vehicle? _getVehicle(VehiclePosition vehiclePosition) {
-    for (var vehicle in _vehicles) {
-      if (vehicle.journeyId == vehiclePosition.journeyId) {
-        return vehicle;
-      }
-    }
-    return null;
+    return _vehicles[vehiclePosition.journeyId];
   }
 
-  bool _isOutdated(VehiclePosition vehiclePosition) {
+  bool _isOutdated(VehiclePosition vehiclePosition, Vehicle? vehicle) {
     if (vehiclePosition is TrainPosition) return !vehiclePosition.active;
     if (vehiclePosition is! LiveVehiclePosition) return false;
 
     if (!vehiclePosition.dataStillRelevant) return true;
+    if (vehicle != null && _vehicles.containsKey(vehicle.nextJourneyId)) return true;
+
     Duration diff = DateTime.now().difference(vehiclePosition.updatedAt);
     bool still = vehiclePosition.atStop || vehiclePosition.speedOrZero < 10;
     return diff > Duration(minutes: still ? 5 : 1);
@@ -691,7 +695,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     if (!mounted) return;
 
     if (response == null) {
-      for (var vehicle in _vehicles) {
+      for (var vehicle in _vehicles.values) {
         if (vehicle.transportMode == TransportMode.train) continue;
         vehicle.properties['outdated'] = true;
         vehicle.updatePosition(vehicle.vehiclePosition, true, teleport: true);
@@ -699,7 +703,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     } else {
       for (var vehiclePosition in response) {
         var vehicle = _getVehicle(vehiclePosition);
-        bool outdated = _isOutdated(vehiclePosition);
+        bool outdated = _isOutdated(vehiclePosition, vehicle);
 
         if (vehicle != null) {
           vehicle.properties['outdated'] = outdated;
@@ -707,9 +711,15 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
         } else {
           var journeyDetails = _journeyDetailById[vehiclePosition.journeyId]!;
 
-          _vehicles.add(Vehicle(vehiclePosition.journeyId, outdated, vehiclePosition, journeyDetails.line.transportMode,
-              journeyDetails.line.backgroundColor, journeyDetails.line.foregroundColor,
-              useInterpolation: !journeyDetails.isTrain));
+          _vehicles[vehiclePosition.journeyId] = Vehicle(
+              vehiclePosition.journeyId,
+              _nextJourneyId[vehiclePosition.journeyId],
+              outdated,
+              vehiclePosition,
+              journeyDetails.line.transportMode,
+              journeyDetails.line.backgroundColor,
+              journeyDetails.line.foregroundColor,
+              useInterpolation: !journeyDetails.isTrain);
         }
       }
       await _mapController.setGeoJsonSource('vehicles', _getVehicleGeoJson(Duration.zero));
@@ -1040,6 +1050,7 @@ class MapFocusable<T> {
 
 class Vehicle {
   String journeyId;
+  String? nextJourneyId;
 
   VehiclePosition vehiclePosition;
   late LatLng interpolatedPosition;
@@ -1108,7 +1119,8 @@ class Vehicle {
     streamController.add(newPosition);
   }
 
-  Vehicle(this.journeyId, bool outdated, this.vehiclePosition, this.transportMode, this.bgColor, this.fgColor,
+  Vehicle(this.journeyId, this.nextJourneyId, bool outdated, this.vehiclePosition, this.transportMode, this.bgColor,
+      this.fgColor,
       {this.useInterpolation = true}) {
     interpolatedPosition = vehiclePosition.position;
     cx = vehiclePosition.position.latitude;
