@@ -125,12 +125,13 @@ class TripWidget extends StatelessWidget {
                             key: const PageStorageKey(0),
                             slivers: [
                               SliverOverlapInjector(handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context)),
-                              TripHistoryList((trip) {
-                                fromFieldController.setLocation(trip.from);
-                                toFieldController.setLocation(trip.to);
-                                _tripOptions.viaFieldController.setLocation(trip.via);
-                                _onSearch(context);
-                              }, key: _tripHistoryKey)
+                              TripHistoryList(
+                                  onTap: (trip) {
+                                    _setLocations(trip);
+                                    _onSearch(context);
+                                  },
+                                  onLongPress: (trip) => _setLocations(trip),
+                                  key: _tripHistoryKey)
                             ],
                           );
                         },
@@ -171,6 +172,12 @@ class TripWidget extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  void _setLocations(TripHistory trip) {
+    fromFieldController.setLocation(trip.from);
+    toFieldController.setLocation(trip.to);
+    _tripOptions.viaFieldController.setLocation(trip.via);
   }
 
   void _onSearch(BuildContext context) {
@@ -238,8 +245,12 @@ class _FavoritePlacesListState extends State<FavoritePlacesList> {
 
 class TripHistoryList extends StatefulWidget {
   final void Function(TripHistory) _onTap;
+  final void Function(TripHistory) _onLongPress;
 
-  const TripHistoryList(this._onTap, {super.key});
+  const TripHistoryList(
+      {required void Function(TripHistory) onTap, required void Function(TripHistory) onLongPress, super.key})
+      : _onTap = onTap,
+        _onLongPress = onLongPress;
 
   @override
   State<TripHistoryList> createState() => _TripHistoryListState();
@@ -281,7 +292,7 @@ class _TripHistoryListState extends State<TripHistoryList> {
                             });
                           })));
                 },
-                child: TripHistoryWidget(trip, i, () => widget._onTap(trip)),
+                child: TripHistoryWidget(trip, i, () => widget._onTap(trip), () => widget._onLongPress(trip)),
               );
             },
             onReorder: reorderTripHistory,
@@ -297,9 +308,10 @@ class _TripHistoryListState extends State<TripHistoryList> {
 class TripHistoryWidget extends StatefulWidget {
   final TripHistory _trip;
   final GestureTapCallback? _onTap;
+  final GestureTapCallback? _onLongPress;
   final int _index;
 
-  TripHistoryWidget(this._trip, this._index, this._onTap) : super(key: ValueKey(_trip.hashCode));
+  TripHistoryWidget(this._trip, this._index, this._onTap, this._onLongPress) : super(key: ValueKey(_trip.hashCode));
 
   @override
   State<TripHistoryWidget> createState() => _TripHistoryWidgetState();
@@ -313,6 +325,7 @@ class _TripHistoryWidgetState extends State<TripHistoryWidget> {
       elevation: 1,
       child: InkWell(
         onTap: widget._onTap,
+        onLongPress: widget._onLongPress,
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
