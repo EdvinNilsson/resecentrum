@@ -9,7 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
-import 'package:maplibre_gl/mapbox_gl.dart' hide Line;
+import 'package:maplibre_gl/maplibre_gl.dart' hide Line;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'extensions.dart';

@@ -5,7 +5,7 @@ import 'package:collection/collection.dart';
 import 'package:diffutil_sliverlist/diffutil_sliverlist.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:maplibre_gl/mapbox_gl.dart';
+import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:rxdart/subjects.dart';
 
 import 'extensions.dart';
