@@ -150,7 +150,7 @@ html {
     }
     
     .line-list-showcase__transport-mode {
-        filter: invert(1);
+        filter: invert(75%);
     }
     
     .autocomplete {
@@ -169,6 +169,10 @@ html {
     .autocomplete .background-transparent::placeholder {
         color: #BDBDBD;
     }
+
+    .border, .border-x, .border-top {
+        border-color: #505050 !important;
+    }
     
     .selected-filter-value {
         color: white;
@@ -177,7 +181,12 @@ html {
     }
     
     .form-control {
-        color: white;
+        color: white !important;
+        background-color: #424242 !important;
+    }
+
+    .form-control::placeholder {
+        color: #ffffff99;
     }
     
     .custom-checkbox .custom-control-label:before, .custom-radio .custom-control-label:before {
