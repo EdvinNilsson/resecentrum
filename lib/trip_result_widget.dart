@@ -262,6 +262,7 @@ class _TripResultWidgetState extends State<TripResultWidget> {
                                                         cancelled.isEmpty,
                                                     0,
                                                     const Text('Delvis inställd', style: TextStyle(color: Colors.red)))
+                                                .insertIf(_requireBooking(journey), 0, const Icon(Icons.phone))
                                                 .addIf(
                                                     journey.tripLegs.any((tripLeg) =>
                                                         (tripLeg.estimatedDepartureTime ??
@@ -531,6 +532,8 @@ class _TripResultWidgetState extends State<TripResultWidget> {
   }
 
   bool _anyNote(Journey journey) => journey.tripLegs.any(_anyNoteLeg);
+
+  bool _requireBooking(Journey journey) => journey.tripLegs.any((leg) => leg.notes.any((note) => note.booking));
 
   bool _anyNoteLeg(TripLeg leg) =>
       leg.notes.isNotEmpty || leg.origin.notes.isNotEmpty || leg.destination.notes.isNotEmpty;

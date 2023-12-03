@@ -781,6 +781,8 @@ class Note implements TS {
   late final Severity severity;
   late final String text;
 
+  bool get booking => type == 'booking';
+
   Note(this.text, [this.severity = Severity.low]) {
     type = '';
   }
@@ -809,7 +811,7 @@ class Note implements TS {
       padding: const EdgeInsets.all(5),
       child: Row(
         children: [
-          getNoteIcon(severity),
+          booking ? const Icon(Icons.phone) : getNoteIcon(severity),
           const SizedBox(width: 20),
           Expanded(
               child: Align(
