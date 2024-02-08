@@ -464,6 +464,7 @@ Future<void> _addTrainInfo(List<Departure> result, DepartureBoardOptions departu
     if (lateDepartures.isNotEmpty) {
       lateDepartureBoardRequest = PlaneraResa.departures(
         stopAreaGid,
+        directionGid: direction?.gid,
         startDateTime: lateDepartures.first.advertisedTimeAtLocation,
         timeSpanInMinutes: lateDepartures.last.advertisedTimeAtLocation
             .difference(lateDepartures.first.advertisedTimeAtLocation)
