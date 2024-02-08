@@ -3,7 +3,7 @@ import 'dart:collection';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_custom_tabs/flutter_custom_tabs.dart';
+import 'package:flutter_custom_tabs/flutter_custom_tabs_lite.dart';
 import 'package:html/parser.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -109,18 +109,10 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
 
 void _launchURL(BuildContext context, String url) async {
   try {
-    await launch(
-      url,
-      customTabsOption: CustomTabsOption(
-        toolbarColor: Theme.of(context).primaryColor,
-        enableUrlBarHiding: true,
-        showPageTitle: true,
-        extraCustomTabs: const <String>[
-          'org.mozilla.firefox',
-          'com.microsoft.emmx',
-        ],
-      ),
-    );
+    await launchUrl(Uri.parse(url),
+        options: LaunchOptions(
+          barColor: Theme.of(context).primaryColor,
+        ));
   } catch (e) {
     debugPrint(e.toString());
   }
