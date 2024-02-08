@@ -3,7 +3,7 @@ description: Journey planner for Västtrafik
 
 publish_to: 'none'
 
-version: 2.1.0+15
+version: 2.1.1+16
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
