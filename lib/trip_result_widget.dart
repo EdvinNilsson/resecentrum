@@ -188,8 +188,10 @@ class _TripResultWidgetState extends State<TripResultWidget> {
                           cancellations.addAll(partlyCancelledWithNote.map((leg) =>
                               leg.notes.firstWhere((note) => note.text.contains('Färd inställd ')).text.replaceFirst(
                                   'Färd inställd ',
-                                  '${leg.serviceJourney.line.name}'
-                                      ' är ${leg.serviceJourney.isTrain ? 'inställt' : 'inställd'} ')));
+                                  leg.serviceJourney.isTrain
+                                      ? '${leg.serviceJourney.line.name} ${leg.serviceJourney.line.designation}'
+                                          ' är inställt '
+                                      : '${leg.serviceJourney.line.name} är inställd ')));
                           cancellations
                               .addIf(
                                   partlyCancelled.isNotEmpty,
