@@ -59,6 +59,24 @@ class HomeState extends State<Home> {
     var appbar = AppBar(
       centerTitle: true,
       title: Text(_pageTitles[_currentIndex]),
+      actions: [
+        if (_currentIndex == 3)
+          IconButton(
+              onPressed: () async {
+                Location? result = await Navigator.push(
+                    context,
+                    PageRouteBuilder(
+                      pageBuilder: (_, __, ___) =>
+                          LocationSearcherWidget(_searchedLocation?.name ?? '', 'Sök plats', false, _searchedLocation),
+                      transitionDuration: Duration.zero,
+                      reverseTransitionDuration: Duration.zero,
+                    ));
+                if (result == null) return;
+                _searchedLocation = result;
+                _mapKey.currentState?.highlightLocation(result);
+              },
+              icon: const Icon(Icons.search))
+      ],
     );
     var landscape = MediaQuery.of(context).orientation == Orientation.landscape;
     return Scaffold(

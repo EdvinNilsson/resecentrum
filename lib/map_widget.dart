@@ -810,7 +810,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _showAddressSheet(CoordLocation address) async {
+  Future<void> _showAddressSheet(Location address) async {
     await showModalBottomSheet(
         context: context,
         builder: (context) {
@@ -994,6 +994,25 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
           fromStopPointGid: showAllStops ? null : departure.stopPoint.gid);
     }
     _refreshTrainPositionStream();
+  }
+
+  void highlightLocation(Location location) async {
+    if (location is StopLocation && location.isStopArea) {
+      _showDepartureSheet(highlightFirstPart(location.name), location.gid, location.position,
+          extraSliver: SliverSafeArea(
+            bottom: false,
+            sliver: SliverToBoxAdapter(
+                child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 5, 8, 0),
+              child: _locationOptionsWidget(location),
+            )),
+          ));
+    } else {
+      _addressMarker(location);
+    }
+
+    await _mapController
+        .animateCamera(CameraUpdate.newCameraPosition(CameraPosition(target: location.position, zoom: 14)));
   }
 }
 
