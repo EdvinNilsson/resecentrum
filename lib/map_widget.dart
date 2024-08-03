@@ -780,7 +780,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     return Row(
       children: [
         Expanded(
-            child: ElevatedButton(
+            child: FilledButton(
                 child: const Text('Res härifrån'),
                 onPressed: () {
                   Navigator.pop(context);
@@ -794,7 +794,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
                 })),
         const SizedBox(width: 10),
         Expanded(
-            child: ElevatedButton(
+            child: FilledButton(
                 child: const Text('Res hit'),
                 onPressed: () {
                   Navigator.pop(context);

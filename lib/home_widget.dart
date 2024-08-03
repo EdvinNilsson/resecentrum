@@ -76,23 +76,21 @@ class HomeState extends State<Home> {
                   NavigationRailDestination(icon: Icon(Icons.map), label: Text('Karta')),
                 ],
                 selectedIndex: _currentIndex,
-                backgroundColor: Theme.of(context).canvasColor,
               ),
             Expanded(child: _tabs[_currentIndex]),
           ],
         ),
       ),
       bottomNavigationBar: !landscape
-          ? BottomNavigationBar(
-              onTap: _onTabTapped,
-              currentIndex: _currentIndex,
-              type: BottomNavigationBarType.fixed,
-              items: const [
-                BottomNavigationBarItem(icon: Icon(Icons.tram), label: 'Sök resa'),
-                BottomNavigationBarItem(icon: Icon(Icons.departure_board), label: 'Nästa tur'),
-                BottomNavigationBarItem(icon: Icon(Icons.error_outline), label: 'Trafikinfo'),
-                BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Karta'),
+          ? NavigationBar(
+              onDestinationSelected: _onTabTapped,
+              destinations: const [
+                NavigationDestination(icon: Icon(Icons.tram), label: 'Sök resa'),
+                NavigationDestination(icon: Icon(Icons.departure_board), label: 'Nästa tur'),
+                NavigationDestination(icon: Icon(Icons.error_outline), label: 'Trafikinfo'),
+                NavigationDestination(icon: Icon(Icons.map), label: 'Karta'),
               ],
+              selectedIndex: _currentIndex,
             )
           : null,
     );

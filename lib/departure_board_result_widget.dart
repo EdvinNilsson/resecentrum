@@ -567,7 +567,7 @@ Widget departureBoardList(Iterable<Departure> departures, Color bgColor,
                 onTap: onTap != null ? () => onTap(context, departure) : null,
                 onLongPress: onLongPress != null ? () => onLongPress(context, departure) : null,
                 child: Container(
-                    constraints: const BoxConstraints(minHeight: 42),
+                    constraints: const BoxConstraints(minHeight: 46),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                     child: Row(children: [
                       Container(

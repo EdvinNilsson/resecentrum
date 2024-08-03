@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math';
 
 import 'package:collection/collection.dart';
@@ -108,7 +107,7 @@ Widget stopRowFromStop(Call stop,
       if (state == DepartureState.replacementBus) {
         style = style.copyWith(color: orange(context));
       } else if (cancelled) {
-        style = style.copyWith(color: Colors.red, decoration: TextDecoration.lineThrough);
+        style = style.merge(cancelledTextStyle);
       }
 
       textSpans.add(TextSpan(text: time.time(), style: style.copyWith(fontWeight: FontWeight.bold)));
@@ -423,7 +422,7 @@ class _ErrorPageState extends State<ErrorPage> {
                 Text(dError.message + (dError.description == null ? '' : '.'), textAlign: TextAlign.center),
                 if (dError.description != null) Text('${dError.description}.', textAlign: TextAlign.center),
                 const SizedBox(height: 24),
-                ElevatedButton(
+                FilledButton(
                     onPressed: () async {
                       setState(() => loading = true);
                       widget.onRefresh().whenComplete(() => setState(() => loading = false));
@@ -462,14 +461,15 @@ Widget loadingPage() {
   return const SafeArea(child: Center(child: CircularProgressIndicator.adaptive()));
 }
 
-Color? cardBackgroundColor(BuildContext context) {
-  return Theme.of(context).brightness == Brightness.light ? Colors.grey.shade100 : Theme.of(context).canvasColor;
-}
+Color? cardBackgroundColor(BuildContext context) => Theme.of(context).brightness == Brightness.light
+    ? Theme.of(context).colorScheme.surfaceContainerLow
+    : Theme.of(context).canvasColor;
 
 Color orange(BuildContext context) =>
     Theme.of(context).brightness == Brightness.light ? Colors.orange.shade800 : Colors.orange;
 
-const TextStyle cancelledTextStyle = TextStyle(color: Colors.red, decoration: TextDecoration.lineThrough);
+const TextStyle cancelledTextStyle =
+    TextStyle(color: Colors.red, decoration: TextDecoration.lineThrough, decorationColor: Colors.red);
 
 Widget iconAndText(IconData icon, String text,
     {double gap = 5, Color? iconColor, Color? textColor, bool expand = true}) {
@@ -482,13 +482,12 @@ Widget iconAndText(IconData icon, String text,
 }
 
 Widget tripTitle(String from, String to, {String? via}) {
+  var textScalar = TextScaler.linear(via == null ? 0.8 : 0.7);
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      highlightFirstPart(from, textScalar: const TextScaler.linear(0.8)),
-      highlightFirstPart(to, textScalar: const TextScaler.linear(0.8))
-    ].addIf(via != null,
-        Text('via $via', textScaler: const TextScaler.linear(0.6), style: const TextStyle(color: Colors.white60))),
+    children: [highlightFirstPart(from, textScalar: textScalar), highlightFirstPart(to, textScalar: textScalar)].addIf(
+        via != null,
+        Text('via $via', textScaler: const TextScaler.linear(0.5), style: const TextStyle(color: Colors.white60))),
   );
 }
 
@@ -507,43 +506,33 @@ class SegmentedControl extends StatefulWidget {
 }
 
 class _SegmentedControlState extends State<SegmentedControl> {
-  late List<bool> _selections;
+  late Set<int> _selected;
 
   @override
   void initState() {
     super.initState();
-    selectOption(widget.controller?.value ?? 0);
-  }
-
-  void selectOption(int index) {
-    _selections = List.generate(widget.options.length, (_) => false);
-    _selections[index] = true;
+    _selected = {widget.controller?.value ?? 0};
   }
 
   @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      return ToggleButtons(
-        renderBorder: true,
-        color: Theme.of(context).hintColor,
-        constraints: BoxConstraints.expand(
-            width: (constraints.maxWidth - widget.options.length - 1) / widget.options.length, height: 48),
-        isSelected: _selections,
-        onPressed: (int index) {
-          setState(() {
-            selectOption(index);
-            widget.controller?.value = index;
-          });
-        },
-        children: widget.options
-            .asMap()
-            .entries
-            .map((option) => Text(option.value,
-                style: _selections[option.key] ? const TextStyle(fontWeight: FontWeight.bold) : null))
-            .toList(growable: false),
-      );
-    });
-  }
+  Widget build(BuildContext context) => LayoutBuilder(
+      builder: (context, constraints) => SizedBox(
+            width: constraints.maxWidth,
+            child: SegmentedButton(
+              segments: widget.options
+                  .asMap()
+                  .entries
+                  .map((option) => ButtonSegment(value: option.key, label: Text(option.value)))
+                  .toList(growable: false),
+              selected: _selected,
+              onSelectionChanged: (set) {
+                setState(() {
+                  _selected = set;
+                  widget.controller?.value = set.first;
+                });
+              },
+            ),
+          ));
 }
 
 class DateTimeSelectorController extends ChangeNotifier {
@@ -612,10 +601,8 @@ class _DateTimeSelectorState extends State<DateTimeSelector> {
                         ),
                         readOnly: true,
                         onTap: () async {
-                          var pickedTime = !kIsWeb && Platform.isAndroid
-                              ? await showNativeTimePicker(widget.controller.time ?? TimeOfDay.now())
-                              : await showTimePicker(
-                                  initialTime: widget.controller.time ?? TimeOfDay.now(), context: context);
+                          var pickedTime = await showTimePicker(
+                              initialTime: widget.controller.time ?? TimeOfDay.now(), context: context);
                           if (pickedTime == null || !context.mounted) return;
                           setState(() {
                             widget._timeInput.text = pickedTime.format(context);
@@ -1156,13 +1143,6 @@ Future<void> createShortcut(BuildContext context, String uri, String label, Stri
 }
 
 Future<int?> androidSdk() => platform.invokeMethod<int>('sdk');
-
-Future<TimeOfDay?> showNativeTimePicker(TimeOfDay initialTime) async {
-  Int32List? list =
-      await platform.invokeMethod<Int32List?>('timePicker', {'hour': initialTime.hour, 'minute': initialTime.minute});
-  if (list == null) return null;
-  return TimeOfDay(hour: list[0], minute: list[1]);
-}
 
 Location? parseLocation(Map<String, String> params, String? prefix) {
   try {

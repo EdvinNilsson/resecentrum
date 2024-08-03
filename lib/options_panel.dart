@@ -142,11 +142,7 @@ mixin ServicesOption on BoxOption implements ServicesGetter {
   @override
   List<bool> get services => box.get('toggleVehicle', defaultValue: List.filled(serviceButtons.length, true));
 
-  void toggle(int index) {
-    var temp = services;
-    temp[index] = !temp[index];
-    box.put('toggleVehicle', temp);
-  }
+  void update(List<bool> value) => box.put('toggleVehicle', value);
 }
 
 class ServiceButtons extends StatefulWidget {
@@ -160,34 +156,38 @@ class ServiceButtons extends StatefulWidget {
 
 class _ServiceButtonsState extends State<ServiceButtons> {
   @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) => ToggleButtons(
-        color: Theme.of(context).hintColor,
-        constraints: BoxConstraints.expand(
-            width: (constraints.maxWidth - widget.servicesOption.services.length - 1) /
-                widget.servicesOption.services.length),
-        onPressed: (int index) {
-          setState(() {
-            widget.servicesOption.toggle(index);
-          });
-        },
-        isSelected: widget.servicesOption.services,
-        children: serviceButtons
-            .map((v) => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(v.icon),
-                      Text(v.name, textAlign: TextAlign.center),
-                    ],
-                  ),
-                ))
-            .toList(growable: false),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, constraints) => SizedBox(
+          width: constraints.maxWidth,
+          child: SegmentedButton(
+            showSelectedIcon: false,
+            multiSelectionEnabled: true,
+            emptySelectionAllowed: true,
+            style: ButtonStyle(
+                padding: WidgetStateProperty.all(const EdgeInsets.symmetric(vertical: 12, horizontal: 4)),
+                shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)))),
+            onSelectionChanged: (set) {
+              setState(() {
+                var list = List<bool>.generate(serviceButtons.length, (index) => set.contains(index));
+                widget.servicesOption.update(list);
+              });
+            },
+            segments: serviceButtons
+                .mapIndexed((index, value) => ButtonSegment(
+                    value: index,
+                    label: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(value.icon, size: 24),
+                        Text(value.name, textAlign: TextAlign.center, textScaler: const TextScaler.linear(1)),
+                      ],
+                    )))
+                .toList(growable: false),
+            selected:
+                Set.from(Iterable.generate(serviceButtons.length).where((i) => widget.servicesOption.services[i])),
+          ),
+        ),
+      );
 }
 
 mixin ChangeMarginOption on BoxOption implements ChangeMarginGetter {
@@ -335,6 +335,7 @@ class _TripOptionsPanelState extends _OptionsPanelState<TripOptionsPanel> {
       const Text('Färdmedel'),
       const SizedBox(height: 5),
       ServiceButtons(widget.tripOptions),
+      const SizedBox(height: 5),
       CheckboxListTile(
         value: widget.tripOptions.includeNearbyStops,
         onChanged: (newValue) => setState(() => widget.tripOptions.includeNearbyStops = newValue ?? true),
@@ -461,7 +462,7 @@ abstract class _OptionsPanelState<T extends OptionsPanel> extends State<T> {
   @override
   Widget build(BuildContext context) {
     return ExpansionPanelList(
-      elevation: expanded ? 2 : 0,
+      elevation: 0,
       expandedHeaderPadding: EdgeInsets.zero,
       expansionCallback: (int index, bool isExpanded) {
         setState(() {
@@ -470,7 +471,6 @@ abstract class _OptionsPanelState<T extends OptionsPanel> extends State<T> {
       },
       children: [
         ExpansionPanel(
-          backgroundColor: expanded ? null : Theme.of(context).canvasColor,
           canTapOnHeader: true,
           headerBuilder: (BuildContext context, bool isExpanded) {
             var summaryText = widget.summary;
@@ -483,11 +483,14 @@ abstract class _OptionsPanelState<T extends OptionsPanel> extends State<T> {
               ),
             );
           },
-          body: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: children(),
+          body: Card(
+            margin: EdgeInsets.zero,
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: children(),
+              ),
             ),
           ),
           isExpanded: expanded,

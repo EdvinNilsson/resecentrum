@@ -48,6 +48,7 @@ void main() async {
 }
 
 const Color primaryColor = Color.fromRGBO(0, 121, 180, 1);
+const Color primaryDarkColor = Color.fromRGBO(13, 71, 116, 1);
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -72,25 +73,54 @@ class MyApp extends StatelessWidget {
         supportedLocales: const [
           Locale('sv'),
         ],
-        theme: ThemeData(primarySwatch: createMaterialColor(primaryColor), useMaterial3: false),
-        darkTheme: ThemeData(
-          useMaterial3: false,
-          brightness: Brightness.dark,
-          primaryColor: primaryColor,
-          elevatedButtonTheme: ElevatedButtonThemeData(
-              style: ButtonStyle(foregroundColor: MaterialStateProperty.all<Color>(Colors.white))),
-          appBarTheme: const AppBarTheme(
-            backgroundColor: primaryColor,
-          ),
-          colorScheme: const ColorScheme.dark().copyWith(primary: primaryColor, secondary: primaryColor),
-          textSelectionTheme: const TextSelectionThemeData(selectionHandleColor: Color(0xff015a85)),
-        ),
+        theme: lightTheme(),
+        darkTheme: darkTheme(),
         home: const Home(),
       ),
     );
   }
 
-  MaterialColor createMaterialColor(Color color) {
+  static ThemeData lightTheme() {
+    var colorScheme = ColorScheme.fromSeed(seedColor: primaryColor);
+    return ThemeData(
+      primarySwatch: createMaterialColor(primaryColor),
+      primaryColor: primaryColor,
+      colorScheme: colorScheme,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+      ),
+      filledButtonTheme:
+          FilledButtonThemeData(style: ButtonStyle(backgroundColor: WidgetStateProperty.all<Color>(primaryColor))),
+      cardTheme: CardTheme(surfaceTintColor: Colors.transparent, color: colorScheme.surface),
+      dividerTheme: const DividerThemeData(color: Colors.black12),
+      textTheme: const TextTheme(bodyMedium: TextStyle(height: 1.25)),
+    );
+  }
+
+  static ThemeData darkTheme() {
+    return ThemeData(
+      brightness: Brightness.dark,
+      primaryColor: primaryColor,
+      colorScheme: ColorScheme.fromSeed(
+        brightness: Brightness.dark,
+        seedColor: primaryColor,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+          style: ButtonStyle(
+              backgroundColor: WidgetStateProperty.all<Color>(primaryDarkColor),
+              foregroundColor: WidgetStateProperty.all<Color>(Colors.white))),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: primaryDarkColor,
+        surfaceTintColor: Colors.transparent,
+      ),
+      dividerTheme: const DividerThemeData(color: Colors.white10),
+      textTheme: const TextTheme(bodyMedium: TextStyle(height: 1.25)),
+    );
+  }
+
+  static MaterialColor createMaterialColor(Color color) {
     List strengths = <double>[.05];
     final swatch = <int, Color>{};
     final int r = color.red, g = color.green, b = color.blue;

@@ -5,8 +5,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_custom_tabs/flutter_custom_tabs_lite.dart';
 import 'package:html/parser.dart';
+import 'package:resecentrum/extensions.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import 'main.dart';
 import 'utils.dart';
 
 class TrafficInformationWidget extends StatefulWidget {
@@ -86,7 +88,7 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
         }
 
         var style = document.createElement('style');
-        style.innerHtml = customCss;
+        style.innerHtml = customCss();
         document.head!.append(style);
 
         var csp = document.createElement('meta');
@@ -118,23 +120,25 @@ void _launchURL(BuildContext context, String url) async {
   }
 }
 
-const String customCss = '''
+String customCss() => '''
 html {
     margin: 1rem;
     height: auto;
 }
 
+
+
 @media (prefers-color-scheme: dark) {
+    :root {
+        --card-color: ${MyApp.darkTheme().colorScheme.surfaceBright.toHexCode()};
+    }
+
     body {
         color: white;
     }
     
     .page, body {
-        background-color: #303030;
-    }
-    
-    .bg-gray, .bg-gray-darker {
-        background-color: #424242 !important;
+        background-color: ${MyApp.darkTheme().canvasColor.toHexCode()};
     }
      
     a, a:hover, .btn--as-text {
@@ -142,7 +146,7 @@ html {
     }
     
     .traffic-situation-one-dot-one {
-        background-color: #424242 !important;
+        background-color: var(--card-color) !important;
         border: solid #505050 !important;
     }
     
@@ -151,12 +155,12 @@ html {
     }
     
     .autocomplete {
-        background-color: #424242 !important;
+        background-color: var(--card-color) !important;
         box-shadow: inset 0 1px 2px #505050;
     }
     
     .autocomplete .autocomplete-results {
-        background-color: #424242 !important;
+        background-color: var(--card-color) !important;
     }
     
     .autocomplete .background-transparent {
@@ -173,13 +177,13 @@ html {
     
     .selected-filter-value {
         color: white;
-        background-color: #424242;
+        background-color: var(--card-color);
         box-shadow: 0 1px 5px rgba(0,0,0,.22);
     }
     
     .form-control {
         color: white !important;
-        background-color: #424242 !important;
+        background-color: var(--card-color) !important;
     }
 
     .form-control::placeholder {
@@ -187,7 +191,11 @@ html {
     }
     
     .custom-checkbox .custom-control-label:before, .custom-radio .custom-control-label:before {
-        background-color: #424242;
+        background-color: var(--card-color);
+    }
+
+    .bg-gray, .bg-gray-darker {
+        background-color: var(--card-color) !important;
     }
 }
 ''';

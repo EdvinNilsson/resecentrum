@@ -101,7 +101,7 @@ class TripWidget extends StatelessWidget {
                           automaticallyImplyLeading: false,
                           title: SizedBox(
                             width: double.infinity,
-                            child: ElevatedButton(onPressed: () => _onSearch(context), child: const Text('Sök')),
+                            child: FilledButton(onPressed: () => _onSearch(context), child: const Text('Sök')),
                           ),
                           bottom: TabBar(
                             indicatorColor: Theme.of(context).primaryColor,

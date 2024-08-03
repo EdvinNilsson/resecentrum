@@ -84,7 +84,7 @@ class DepartureBoardWidget extends StatelessWidget {
                         automaticallyImplyLeading: false,
                         title: SizedBox(
                           width: double.infinity,
-                          child: ElevatedButton(
+                          child: FilledButton(
                               onPressed: () {
                                 if (!(_stopFieldController.location is StopLocation ||
                                     _stopFieldController.location is CurrentLocation)) {

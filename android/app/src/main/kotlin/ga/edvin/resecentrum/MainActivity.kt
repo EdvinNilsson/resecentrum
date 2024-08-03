@@ -10,17 +10,13 @@ import android.net.Uri
 import android.os.Build.VERSION
 import android.os.Build.VERSION_CODES
 import androidx.annotation.NonNull
-import com.google.android.material.timepicker.MaterialTimePicker
-import com.google.android.material.timepicker.MaterialTimePicker.INPUT_MODE_CLOCK
-import com.google.android.material.timepicker.TimeFormat
-import io.flutter.embedding.android.FlutterFragmentActivity
+import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
-import io.flutter.plugin.common.MethodChannel.Result
 
 const val CHANNEL = "ga.edvin.resecentrum"
 
-class MainActivity : FlutterFragmentActivity() {
+class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
@@ -36,13 +32,6 @@ class MainActivity : FlutterFragmentActivity() {
                 }
                 "sdk" -> {
                     result.success(VERSION.SDK_INT)
-                }
-                "timePicker" -> {
-                    val hour = call.argument<Int>("hour");
-                    val minute = call.argument<Int>("minute");
-                    if (hour != null && minute != null) {
-                        timePicker(hour, minute, result)
-                    }
                 }
                 else -> {
                     result.notImplemented()
@@ -78,22 +67,5 @@ class MainActivity : FlutterFragmentActivity() {
 
             shortcutManager.requestPinShortcut(pinShortcutInfo, successCallback.intentSender)
         }
-    }
-
-    private fun timePicker(hour: Int, minute: Int, result: Result) {
-        val picker =
-            MaterialTimePicker.Builder()
-                .setTimeFormat(TimeFormat.CLOCK_24H)
-                .setInputMode(INPUT_MODE_CLOCK)
-                .setHour(hour)
-                .setMinute(minute)
-                .build()
-
-        picker.addOnPositiveButtonClickListener { result.success(intArrayOf(picker.hour, picker.minute)) }
-
-        picker.addOnNegativeButtonClickListener { result.success(null) }
-        picker.addOnCancelListener { result.success(null) }
-
-        picker.show(supportFragmentManager, null)
     }
 }
