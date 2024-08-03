@@ -850,51 +850,57 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
               maxChildSize: 1 - MediaQuery.of(ctx).padding.top / MediaQuery.of(ctx).size.height,
               builder: (context, scrollController) {
                 var appBar = SliverAppBar(title: header, pinned: true, automaticallyImplyLeading: false);
-                return StreamBuilder<Iterable<Departure>>(
-                  stream: streamController.stream,
-                  builder: (context, departureBoardWithTs) {
-                    if (!departureBoardWithTs.hasData) {
+                return DepartureBoardUpdater(
+                  onUpdate: () => _updateDepartureBoard(
+                      streamController, stopAreaGid, dateTime, position, state, trafficSituationSubject,
+                      refresh: true),
+                  child: StreamBuilder<Iterable<Departure>>(
+                    stream: streamController.stream,
+                    builder: (context, departureBoardWithTs) {
+                      if (!departureBoardWithTs.hasData) {
+                        return CustomScrollView(
+                            controller: scrollController,
+                            slivers: [
+                              appBar,
+                              SliverFillRemaining(
+                                  child: departureBoardWithTs.connectionState == ConnectionState.waiting
+                                      ? loadingPage()
+                                      : ErrorPage(
+                                          () => _updateDepartureBoard(streamController, stopAreaGid, dateTime, position,
+                                              state, trafficSituationSubject),
+                                          error: departureBoardWithTs.error))
+                            ].insertIf(extraSliver != null, 1, extraSliver));
+                      }
+                      var bgColor = Theme.of(context).cardColor;
                       return CustomScrollView(
                           controller: scrollController,
                           slivers: [
                             appBar,
-                            SliverFillRemaining(
-                                child: departureBoardWithTs.connectionState == ConnectionState.waiting
-                                    ? loadingPage()
-                                    : ErrorPage(
-                                        () => _updateDepartureBoard(streamController, stopAreaGid, dateTime, position,
-                                            state, trafficSituationSubject),
-                                        error: departureBoardWithTs.error))
+                            SliverSafeArea(
+                              sliver:
+                                  departureBoardList(departureBoardWithTs.data!, bgColor, onTap: (context, departure) {
+                                Navigator.pop(context);
+                                _showJourneyDetailSheet(departure);
+                              }, onLongPress: (context, departure) {
+                                Navigator.pop(context);
+                                _showDepartureOnMap(departure, null);
+                              }),
+                              bottom: false,
+                            ),
+                            trafficSituationWidget(trafficSituationSubject.stream)
                           ].insertIf(extraSliver != null, 1, extraSliver));
-                    }
-                    var bgColor = Theme.of(context).cardColor;
-                    return CustomScrollView(
-                        controller: scrollController,
-                        slivers: [
-                          appBar,
-                          SliverSafeArea(
-                            sliver:
-                                departureBoardList(departureBoardWithTs.data!, bgColor, onTap: (context, departure) {
-                              Navigator.pop(context);
-                              _showJourneyDetailSheet(departure);
-                            }, onLongPress: (context, departure) {
-                              Navigator.pop(context);
-                              _showDepartureOnMap(departure, null);
-                            }),
-                            bottom: false,
-                          ),
-                          trafficSituationWidget(trafficSituationSubject.stream)
-                        ].insertIf(extraSliver != null, 1, extraSliver));
-                  },
+                    },
+                  ),
                 );
               });
         });
   }
 
   Future<void> _updateDepartureBoard(StreamController streamController, String stopAreaGid, DateTime? dateTime,
-      LatLng position, DepartureBoardState state, BehaviorSubject tsSubject) async {
+      LatLng position, DepartureBoardState state, BehaviorSubject tsSubject,
+      {bool refresh = false}) async {
     await getDepartureBoard(streamController, stopAreaGid, dateTime, departureBoardOptions, null, position, state,
-        tsSubject: tsSubject);
+        tsSubject: tsSubject, ignoreError: refresh, addOnlyOnce: refresh);
   }
 
   void _showJourneyDetailSheet(Departure departure) {
@@ -1140,4 +1146,50 @@ class Walk {
   final LatLng end;
 
   Walk(this.start, this.end);
+}
+
+class DepartureBoardUpdater extends StatefulWidget {
+  const DepartureBoardUpdater({required this.child, required this.onUpdate, super.key});
+
+  final Widget child;
+  final void Function() onUpdate;
+
+  @override
+  State<DepartureBoardUpdater> createState() => _DepartureBoardUpdaterState();
+}
+
+class _DepartureBoardUpdaterState extends State<DepartureBoardUpdater> {
+  Timer? _timer;
+  late final AppLifecycleListener _listener;
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+
+  @override
+  void initState() {
+    super.initState();
+    _listener = AppLifecycleListener(
+      onStateChange: (state) {
+        if (state != AppLifecycleState.resumed && _timer?.isActive == true) {
+          _timer?.cancel();
+        } else if (state == AppLifecycleState.resumed && _timer?.isActive == false) {
+          _initTimer();
+        }
+      },
+    );
+    _initTimer(updateIntermittently: false);
+  }
+
+  void _initTimer({bool updateIntermittently = true}) {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 15), (_) => widget.onUpdate());
+    if (updateIntermittently) widget.onUpdate();
+  }
+
+  @override
+  void dispose() {
+    _listener.dispose();
+    _timer?.cancel();
+    super.dispose();
+  }
 }
