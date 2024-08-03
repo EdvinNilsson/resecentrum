@@ -1,14 +1,14 @@
 import 'dart:async';
 
+import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
-import 'package:uni_links/uni_links.dart';
 
 import 'departure_board_result_widget.dart';
 import 'departure_board_widget.dart';
 import 'extensions.dart';
+import 'location_searcher.dart';
 import 'main.dart';
 import 'map_widget.dart';
 import 'network/planera_resa.dart';
@@ -17,8 +17,6 @@ import 'traffic_information_widget.dart';
 import 'trip_result_widget.dart';
 import 'trip_widget.dart';
 import 'utils.dart';
-
-bool _initialUriIsHandled = false;
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -29,27 +27,30 @@ class Home extends StatefulWidget {
 
 class HomeState extends State<Home> {
   int _currentIndex = mainBox.get('tab', defaultValue: 0);
-  StreamSubscription? _sub;
+  late AppLinks _appLinks;
+  StreamSubscription<Uri>? _linkSubscription;
+  final GlobalKey<MapWidgetState> _mapKey = GlobalKey();
+  Location? _searchedLocation;
 
-  final List<Widget> _tabs = [
-    TripWidget(),
-    DepartureBoardWidget(),
-    const TrafficInformationWidget(),
-    const MapWidget([]),
-  ];
+  late final List<Widget> _tabs;
 
   final List<String> _pageTitles = ['Sök resa', 'Nästa tur', 'Trafikinformation', 'Karta'];
 
   @override
   void initState() {
     super.initState();
-    _handleIncomingLinks();
-    _handleInitialUri();
+    _tabs = [
+      TripWidget(),
+      DepartureBoardWidget(),
+      const TrafficInformationWidget(),
+      MapWidget(const [], key: _mapKey),
+    ];
+    _initDeepLinks();
   }
 
   @override
   void dispose() {
-    _sub?.cancel();
+    _linkSubscription?.cancel();
     super.dispose();
   }
 
@@ -175,31 +176,11 @@ class HomeState extends State<Home> {
     }
   }
 
-  void _handleIncomingLinks() {
-    if (!kIsWeb) {
-      _sub = uriLinkStream.listen((Uri? uri) {
-        if (!mounted) return;
-        if (uri != null) _handleLink(uri);
-      }, onError: (Object e) {
-        if (!mounted) return;
-        if (kDebugMode) print(e);
-      });
-    }
-  }
+  Future<void> _initDeepLinks() async {
+    _appLinks = AppLinks();
 
-  Future<void> _handleInitialUri() async {
-    if (!_initialUriIsHandled) {
-      _initialUriIsHandled = true;
-      try {
-        final uri = await getInitialUri();
-        if (uri != null) _handleLink(uri);
-        if (!mounted) return;
-      } on PlatformException {
-        if (kDebugMode) print('failed to get initial uri');
-      } on FormatException {
-        if (!mounted) return;
-        if (kDebugMode) print('malformed initial uri');
-      }
-    }
+    _linkSubscription = _appLinks.uriLinkStream.listen((uri) {
+      _handleLink(uri);
+    });
   }
 }

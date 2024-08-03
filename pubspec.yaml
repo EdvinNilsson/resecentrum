@@ -13,6 +13,7 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  app_links: ^6.1.1
   collection: ^1.18.0
   diacritic: ^0.1.3
   diffutil_sliverlist: ^0.5.1
