@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:math';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
@@ -34,7 +35,7 @@ class MapWidget extends StatefulWidget {
 }
 
 class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
-  late MaplibreMapController _mapController;
+  late MapLibreMapController _mapController;
 
   final List<ServiceJourneyDetails> _journeyDetails = [];
   final Map<String, ServiceJourney> _journeyDetailById = {};
@@ -50,11 +51,13 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   final dynamic _lineStopsGeoJson = {'type': 'FeatureCollection', 'features': []};
   final dynamic _stopsGeoJson = {'type': 'FeatureCollection', 'features': []};
 
-  late final double devicePixelRatio;
-  late final Color primaryColor;
+  late double devicePixelRatio;
+  late Color primaryColor;
 
   Timer? _timer;
   Ticker? _ticker;
+
+  bool _styleLoaded = false;
 
   static CameraPosition? _lastPosition;
 
@@ -103,7 +106,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed && _timer?.isActive == true) {
+    if (state != AppLifecycleState.resumed && state != AppLifecycleState.inactive && _timer?.isActive == true) {
       _timer?.cancel();
       _trainPositionStream?.cancel();
     } else if (state == AppLifecycleState.resumed && _timer?.isActive == false) {
@@ -111,44 +114,44 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     }
   }
 
-  bool _mapCreated = false;
-
-  void _onMapCreated(MaplibreMapController controller) {
+  void _onMapCreated(MapLibreMapController controller) {
     _mapController = controller;
     _mapController.onFeatureTapped.add(_onFeatureTap);
-    _mapCreated = true;
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaplibreMap(
-      onMapCreated: _onMapCreated,
-      onCameraIdle: widget._mapJourneys.isEmpty ? _onCameraIdle : null,
-      trackCameraPosition: widget._mapJourneys.isEmpty,
-      initialCameraPosition: (widget._mapJourneys.isEmpty ? _lastPosition : null) ??
-          CameraPosition(target: const LatLng(57.70, 11.97), zoom: widget._mapJourneys.isEmpty ? 13 : 11),
-      cameraTargetBounds: CameraTargetBounds(_mapBounds),
-      onStyleLoadedCallback: _onStyleLoadedCallback,
-      styleString: 'https://osm.vasttrafik.se/styles/osm_vt_basic/style.json',
-      myLocationEnabled: true,
-      myLocationRenderMode: MyLocationRenderMode.NORMAL,
-      onUserLocationUpdated: widget._mapJourneys.isEmpty ? _onUserLocationUpdated : null,
-      onMapClick: _onMapTap,
-      minMaxZoomPreference: const MinMaxZoomPreference(4, null),
-      onMapLongClick: (point, coord) => _onMapTap(point, coord, longClick: true),
-      compassViewMargins: !kIsWeb && Platform.isAndroid
-          ? math.Point(MediaQuery.of(context).padding.right + 8, MediaQuery.of(context).padding.top + 8)
-          : const math.Point(8, 8),
-      attributionButtonMargins: const math.Point(-100, -100),
+    return AnnotatedRegion(
+      value: const SystemUiOverlayStyle(statusBarIconBrightness: Brightness.dark),
+      child: MapLibreMap(
+        onMapCreated: _onMapCreated,
+        onCameraIdle: widget._mapJourneys.isEmpty ? _onCameraIdle : null,
+        trackCameraPosition: widget._mapJourneys.isEmpty,
+        initialCameraPosition: (widget._mapJourneys.isEmpty ? _lastPosition : null) ??
+            CameraPosition(target: const LatLng(57.70, 11.97), zoom: widget._mapJourneys.isEmpty ? 13 : 11),
+        cameraTargetBounds: CameraTargetBounds(_mapBounds),
+        onStyleLoadedCallback: _onStyleLoadedCallback,
+        styleString: 'https://osm.vasttrafik.se/styles/osm_vt_basic/style.json',
+        myLocationEnabled: true,
+        myLocationRenderMode: MyLocationRenderMode.normal,
+        onUserLocationUpdated: widget._mapJourneys.isEmpty ? _onUserLocationUpdated : null,
+        onMapClick: _onMapTap,
+        minMaxZoomPreference: const MinMaxZoomPreference(4, null),
+        onMapLongClick: (point, coord) => _onMapTap(point, coord, longClick: true),
+        compassViewMargins: !kIsWeb && Platform.isAndroid
+            ? math.Point(MediaQuery.of(context).padding.right + 8, MediaQuery.of(context).padding.top + 8)
+            : const math.Point(8, 8),
+        attributionButtonMargins: const math.Point(-100, -100),
+      ),
     );
   }
 
   void _onStyleLoadedCallback() async {
-    _addImageFromAsset('bus', 'assets/bus.png', true);
-    _addImageFromAsset('boat', 'assets/boat.png', true);
-    _addImageFromAsset('tram', 'assets/tram.png', true);
-    _addImageFromAsset('train', 'assets/train.png', true);
-    _addImageFromAsset('railway', 'assets/railway.png', true);
+    await _addImageFromAsset('bus', 'assets/bus.png', true);
+    await _addImageFromAsset('boat', 'assets/boat.png', true);
+    await _addImageFromAsset('tram', 'assets/tram.png', true);
+    await _addImageFromAsset('train', 'assets/train.png', true);
+    await _addImageFromAsset('railway', 'assets/railway.png', true);
 
     await _mapController.addGeoJsonSource('walks', _walksGeoJson);
     await _mapController.addGeoJsonSource('lines', _linesGeoJson);
@@ -323,6 +326,9 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
 
     _ticker = Ticker(_updateInterpolation);
     _ticker?.start();
+
+    if (widget._mapJourneys.isEmpty) _updateNearbyStops();
+    _styleLoaded = true;
   }
 
   Future<void> addMapJourneys(Iterable<MapJourney> mapJourneys) async {
@@ -364,13 +370,13 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   Future<void> _addImageFromAsset(String name, String assetName, bool sdf) async {
     final ByteData bytes = await rootBundle.load(assetName);
     final Uint8List list = bytes.buffer.asUint8List();
-    return _mapController.addImage(name, list, sdf);
+    return await _mapController.addImage(name, list, sdf);
   }
 
   bool _updatingNearbyStops = false;
 
   void _onCameraIdle() async {
-    if (_updatingNearbyStops || !_mapCreated) return;
+    if (_updatingNearbyStops || !_styleLoaded) return;
     _updatingNearbyStops = true;
     await _updateNearbyStops();
     _updatingNearbyStops = false;
@@ -382,8 +388,8 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     if (_initialLocation && _lastPosition == null) {
       if (!location.position.inBounds(_mapBounds)) return;
       _initialLocation = false;
-      await _mapController.animateCamera(CameraUpdate.newLatLng(location.position));
       _updateNearbyStops();
+      await _mapController.animateCamera(CameraUpdate.newLatLng(location.position));
     }
   }
 
@@ -437,53 +443,67 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
 
   void _onMapTap(math.Point<double> point, LatLng position, {bool longClick = false}) async {
     if (!longClick) {
+      var touchRadius = 48 * devicePixelRatio;
+
       List<math.Point<num>> points =
           await _mapController.toScreenLocationBatch(_stops.map((stop) => stop.item.position));
 
-      var touchRadius = math.pow(48 * devicePixelRatio, 2);
-
-      for (int i = 0; i < _stops.length; i++) {
-        if (points[i].squaredDistanceTo(point) < touchRadius) {
-          var stop = _stops[i].item;
-          DateTime? dateTime = stop.improvedArrivalTimeEstimation;
-          _showDepartureSheet(stopRowFromStop(stop), stopAreaFromStopPoint(stop.stopPoint.gid), stop.stopPoint.position,
-              dateTime: dateTime);
-          return;
-        }
+      var stop = (await _getTappedElement(_stops, point, points, touchRadius))?.item;
+      if (stop != null) {
+        DateTime? dateTime = stop.improvedArrivalTimeEstimation;
+        _showDepartureSheet(stopRowFromStop(stop), stopAreaFromStopPoint(stop.stopPoint.gid), stop.stopPoint.position,
+            dateTime: dateTime);
+        return;
       }
 
       points = await _mapController.toScreenLocationBatch(_stopLocations.map((stop) => stop.position));
 
-      for (int i = 0; i < points.length; i++) {
-        if (points[i].squaredDistanceTo(point) < touchRadius) {
-          var stopLocation = _stopLocations.elementAt(i);
-          _showDepartureSheet(highlightFirstPart(stopLocation.name), stopLocation.gid, stopLocation.position,
-              extraSliver: SliverSafeArea(
-                bottom: false,
-                sliver: SliverToBoxAdapter(
-                    child: Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 5, 8, 0),
-                  child: _locationOptionsWidget(stopLocation),
-                )),
-              ));
-          return;
-        }
+      var stopLocation = await _getTappedElement(_stopLocations, point, points, touchRadius);
+      if (stopLocation != null) {
+        _showDepartureSheet(highlightFirstPart(stopLocation.name), stopLocation.gid, stopLocation.position,
+            extraSliver: SliverSafeArea(
+              bottom: false,
+              sliver: SliverToBoxAdapter(
+                  child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 5, 8, 0),
+                child: _locationOptionsWidget(stopLocation),
+              )),
+            ));
+        return;
       }
     }
 
     if (widget._mapJourneys.isEmpty) {
       var address = await MGate.getLocationNearbyAddress(position);
       if (address == null) return;
-      if (_marker != null) _mapController.removeCircle(_marker!);
-      _marker = await _mapController.addCircle(CircleOptions(
-          geometry: address.position,
-          circleColor: Colors.red.toHexCode(),
-          circleRadius: 5,
-          circleStrokeColor: '#FFFFFF',
-          circleStrokeWidth: 3));
-      await _showAddressSheet(address);
-      if (_marker != null) _mapController.removeCircle(_marker!);
+      _addressMarker(address);
     }
+  }
+
+  Future<T?> _getTappedElement<T>(
+      Iterable<T> elements, Point<num> point, List<Point<num>> points, double radius) async {
+    int? closestIndex;
+    num smallestDistance = radius * radius;
+    for (int i = 0; i < elements.length; i++) {
+      var distance = points[i].squaredDistanceTo(point);
+      if (distance < smallestDistance) {
+        smallestDistance = distance;
+        closestIndex = i;
+      }
+    }
+    return closestIndex != null ? elements.elementAt(closestIndex) : null;
+  }
+
+  void _addressMarker(Location address) async {
+    if (_marker != null) _mapController.removeCircle(_marker!);
+    _marker = await _mapController.addCircle(CircleOptions(
+        geometry: address.position,
+        circleColor: Colors.red.toHexCode(),
+        circleRadius: 5,
+        circleStrokeColor: '#FFFFFF',
+        circleStrokeWidth: 3));
+    await _showAddressSheet(address);
+    if (_marker != null) _mapController.removeCircle(_marker!);
   }
 
   void _addJourneyDetail(ServiceJourneyDetails journeyDetails, JourneyPart? journeyPart, bool focus) {
@@ -541,7 +561,8 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
       'geometry': {
         'type': 'LineString',
         'coordinates': linkCoordinates.map((point) => point.toGeoJsonCoordinates()).toList(growable: false),
-      }
+      },
+      'properties': {},
     });
 
     _mapController.setGeoJsonSource('walks', _walksGeoJson);
@@ -770,7 +791,8 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
         'geometry': {
           'type': 'Point',
           'coordinates': stop.position.toGeoJsonCoordinates(),
-        }
+        },
+        'properties': {}
       });
     }
     _mapController.setGeoJsonSource('stops', _stopsGeoJson);
