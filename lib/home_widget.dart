@@ -164,11 +164,9 @@ class HomeState extends State<Home> {
               return DepartureBoardResultWidget(stop, null, options, direction: direction);
             });
 
-            if (Navigator.canPop(context)) {
-              Navigator.pushReplacement(context, route);
-            } else {
-              Navigator.push(context, route);
-            }
+            if (_currentIndex >= 2) setState(() => _currentIndex = 1);
+
+            _openRoute(route);
             break;
           case 'trip':
             Location? from = parseLocation(uri.queryParameters, 'origin');
@@ -181,16 +179,25 @@ class HomeState extends State<Home> {
               return TripResultWidget(from, to, null, false, options);
             });
 
-            if (Navigator.canPop(context)) {
-              Navigator.pushReplacement(context, route);
-            } else {
-              Navigator.push(context, route);
-            }
+            if (_currentIndex >= 2) setState(() => _currentIndex = 0);
+
+            _openRoute(route);
             break;
         }
       } catch (e) {
         if (kDebugMode) print(e);
       }
+    }
+  }
+
+  void _openRoute(Route route) {
+    if (Navigator.canPop(context)) {
+      Navigator.popUntil(context, (route) => route is! ModalBottomSheetRoute);
+    }
+    if (Navigator.canPop(context)) {
+      Navigator.pushReplacement(context, route);
+    } else {
+      Navigator.push(context, route);
     }
   }
 

@@ -264,7 +264,7 @@ Widget displayTSs(Iterable<TS> ts) {
 }
 
 const List<String> acronymWords = ['central', 'norra', 'södra', 'östra', 'västra'];
-const List<String> excludeWords = ['station', '(tåg)', 'central', 'resecentrum', 'city'];
+const List<String> excludeWords = ['station', '(tåg)', 'central', 'resecentrum', 'city', 'stasjon'];
 const String vowels = 'aeiouyåäö';
 
 String shortStationName(String name, {bool useAcronyms = true}) {

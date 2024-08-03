@@ -253,30 +253,31 @@ class TripDetailsWidget extends StatelessWidget {
       _stopHeader(leg, tripLegDetails.origin, true),
       displayTSs(leg.origin.notes),
       const Divider(),
-      _legDetail(tripLegDetails, context),
+      _legDetail(leg, tripLegDetails, context),
       const Divider(),
       _stopHeader(leg, tripLegDetails.destination, false),
       displayTSs(leg.destination.notes)
     ]);
   }
 
-  Widget _legDetail(TripLegDetails leg, BuildContext context) {
-    Duration duration = leg.destination.arrivalTime!.difference(leg.origin.departureTime!);
-    int numberOfStops = leg.destination.index - leg.origin.index;
+  Widget _legDetail(TripLeg leg, TripLegDetails legDetails, BuildContext context) {
+    Duration duration = leg.arrivalTime.difference(leg.departureTime);
+    int numberOfStops = legDetails.destination.index - legDetails.origin.index;
     return Padding(
       padding: const EdgeInsets.all(5),
       child: Row(
         children: [
           const SizedBox(width: 74),
           Text(
-              '${getDurationString(duration)}, $numberOfStops ' +
-                  (leg.serviceJourneys.first.line.isTrain
-                      ? numberOfStops > 1
-                          ? 'stationer'
-                          : 'station'
-                      : numberOfStops > 1
-                          ? 'hållplatser'
-                          : 'hållplats'),
+              (StringBuffer('${getDurationString(duration)}, $numberOfStops ')
+                    ..write((leg.serviceJourney.line.isTrain
+                        ? numberOfStops > 1
+                            ? 'stationer'
+                            : 'station'
+                        : numberOfStops > 1
+                            ? 'hållplatser'
+                            : 'hållplats')))
+                  .toString(),
               style: TextStyle(color: Theme.of(context).hintColor))
         ],
       ),

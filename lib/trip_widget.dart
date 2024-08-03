@@ -23,7 +23,7 @@ class TripWidget extends StatelessWidget {
   final BoxTripOptions _tripOptions = BoxTripOptions();
 
   final GlobalKey<_TripHistoryListState> _tripHistoryKey = GlobalKey();
-  final GlobalKey<_FavoritePlacesListState> _favoritePlacesKey = GlobalKey();
+  final GlobalKey<TripOptionsPanelState> _tripOptionsKey = GlobalKey();
 
   TripWidget({super.key});
 
@@ -85,7 +85,7 @@ class TripWidget extends StatelessWidget {
                                 SegmentedControl(const ['Nu', 'Avgång', 'Ankomst'],
                                     controller: _segmentedControlController),
                                 DateTimeSelector(_segmentedControlController, _dateTimeSelectorController),
-                                TripOptionsPanel(_tripOptions),
+                                TripOptionsPanel(_tripOptions, key: _tripOptionsKey),
                               ],
                             ),
                           ),
@@ -142,24 +142,21 @@ class TripWidget extends StatelessWidget {
                           key: const PageStorageKey(1),
                           slivers: [
                             SliverOverlapInjector(handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context)),
-                            FavoritePlacesList(
-                                onTap: (location) {
-                                  if (!_toFocusNode.hasFocus) {
-                                    fromFieldController.setLocation(location);
-                                    FocusScope.of(context).requestFocus(_toFocusNode);
-                                  } else {
-                                    toFieldController.setLocation(location);
-                                    FocusScope.of(context).requestFocus(_fromFocusNode);
-                                  }
-                                },
-                                onLongPress: (location) {
-                                  if (_toFocusNode.hasFocus) {
-                                    fromFieldController.setLocation(location);
-                                  } else {
-                                    toFieldController.setLocation(location);
-                                  }
-                                },
-                                key: _favoritePlacesKey),
+                            FavoritePlacesList(onTap: (location) {
+                              if (!_toFocusNode.hasFocus) {
+                                fromFieldController.setLocation(location);
+                                FocusScope.of(context).requestFocus(_toFocusNode);
+                              } else {
+                                toFieldController.setLocation(location);
+                                FocusScope.of(context).requestFocus(_fromFocusNode);
+                              }
+                            }, onLongPress: (location) {
+                              if (_toFocusNode.hasFocus) {
+                                fromFieldController.setLocation(location);
+                              } else {
+                                toFieldController.setLocation(location);
+                              }
+                            }),
                           ],
                         );
                       }),
@@ -178,6 +175,7 @@ class TripWidget extends StatelessWidget {
     fromFieldController.setLocation(trip.from);
     toFieldController.setLocation(trip.to);
     _tripOptions.viaFieldController.setLocation(trip.via);
+    _tripOptionsKey.currentState?.update();
   }
 
   void _onSearch(BuildContext context) {

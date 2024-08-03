@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 
@@ -91,7 +92,7 @@ mixin TripOptionsSummary implements TripOptions {
     if (changeMarginMinutes == 2) {
       changes.add('Kort bytesmarginal (2 min)');
     } else if (changeMarginMinutes != null) {
-      var durationString = _TripOptionsPanelState.customChangeMarginDurationString(changeMarginMinutes!);
+      var durationString = TripOptionsPanelState.customChangeMarginDurationString(changeMarginMinutes!);
       changes.add('Bytesmarginal ($durationString)');
     }
 
@@ -262,15 +263,14 @@ class TripOptionsPanel extends StatefulWidget implements OptionsPanel {
   const TripOptionsPanel(this.tripOptions, {super.key});
 
   @override
-  State<TripOptionsPanel> createState() => _TripOptionsPanelState();
+  State<TripOptionsPanel> createState() => TripOptionsPanelState();
 
   @override
   String? get summary => tripOptions.summary;
 }
 
-class _TripOptionsPanelState extends _OptionsPanelState<TripOptionsPanel> {
-  static String customChangeMarginDurationString(int minutes) =>
-      '${getDurationString(Duration(minutes: minutes))}${minutes >= 5 ? ' extra marginal' : ''}';
+class TripOptionsPanelState extends _OptionsPanelState<TripOptionsPanel> {
+  static String customChangeMarginDurationString(int minutes) => getDurationString(Duration(minutes: minutes));
 
   String get customChangeMarginText {
     var minutes = widget.tripOptions.changeMarginMinutes;
@@ -286,7 +286,9 @@ class _TripOptionsPanelState extends _OptionsPanelState<TripOptionsPanel> {
         : 'Anpassad (${getDistanceString(meters)})';
   }
 
-  _TripOptionsPanelState();
+  TripOptionsPanelState();
+
+  void update() => setState(() {});
 
   @override
   List<Widget> children() {
