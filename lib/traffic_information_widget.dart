@@ -197,5 +197,9 @@ html {
     .bg-gray, .bg-gray-darker {
         background-color: var(--card-color) !important;
     }
+    
+    .btn.btn-link, .selected-filter-value__close {
+        filter: invert(1) grayscale(1);
+    }
 }
 ''';

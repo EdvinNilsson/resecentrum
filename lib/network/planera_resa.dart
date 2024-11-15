@@ -452,7 +452,7 @@ class ServiceJourney {
   bool get isTrain => line.isTrain;
 
   ServiceJourney.fromJson(Json json) {
-    gid = json['gid'];
+    gid = json['gid'] ?? '9015014000000000';
     origin = json['origin'];
     direction = json['direction'] ?? '';
     line = Line.fromJson(json['line']);
@@ -490,7 +490,7 @@ class Line {
     backgroundColor = fromHex(json['backgroundColor']);
     foregroundColor = fromHex(json['foregroundColor']);
     transportMode = TransportMode.values.asNameMap()[json['transportMode']]!;
-    transportSubMode = TransportSubMode.values.asNameMap()[json['transportSubMode']]!;
+    transportSubMode = TransportSubMode.values.asNameMap()[json['transportSubMode']] ?? TransportSubMode.unknown;
     isWheelchairAccessible = json['isWheelchairAccessible'] ?? false;
   }
 }
@@ -756,7 +756,7 @@ class LinkEndpoint {
   LinkEndpoint.fromJson(Json json) {
     gid = json['gid'];
     name = json['name'];
-    locationType = LocationType.values.asNameMap()[json['locationType']]!;
+    locationType = LocationType.values.asNameMap()[json['locationType']] ?? LocationType.unknown;
     position = LatLng(json['latitude'], json['longitude']);
     plannedTime = DateTime.parse(json['plannedTime']).toLocal();
     estimatedTime = parseDateTime(json['estimatedTime']);
@@ -789,7 +789,7 @@ class Note implements TS {
 
   Note.fromJson(Json json) {
     type = json['type'];
-    severity = Severity.values.asNameMap()[json['severity']]!;
+    severity = Severity.values.asNameMap()[json['severity']] ?? Severity.unknown;
     text = removeToGoMentions(json['text'])!;
   }
 
@@ -967,7 +967,7 @@ abstract class Link extends JourneyLeg {
 
   Link.fromJson(Json json) : super.fromJson(json) {
     transportMode = TransportMode.values.asNameMap()[json['transportMode']]!;
-    transportSubMode = TransportSubMode.values.asNameMap()[json['transportSubMode']]!;
+    transportSubMode = TransportSubMode.values.asNameMap()[json['transportSubMode']] ?? TransportSubMode.unknown;
     estimatedNumberOfSteps = json['estimatedNumberOfSteps'];
     linkCoordinates = List.from(json['linkCoordinates'])
         .map((coord) => LatLng(coord['latitude'], coord['longitude']))
@@ -1217,7 +1217,7 @@ class LocationInfo {
   LocationInfo.fromJson(Json json) {
     gid = json['gid'];
     name = json['name'];
-    locationType = LocationType.values.asNameMap()[json['locationType']]!;
+    locationType = LocationType.values.asNameMap()[json['locationType']] ?? LocationType.unknown;
     position = LatLng(json['latitude'], json['longitude']);
     platform = json['platform'];
     straightLineDistanceInMeters = json['straightLineDistanceInMeters'];

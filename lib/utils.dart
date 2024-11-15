@@ -29,7 +29,7 @@ String getDelayString(int? delay, {DepartureState? state}) {
 bool hasDeparted(VehiclePosition vehicle, LatLng position) {
   var distance = distanceBetween(vehicle.position, position);
   if ((distance > 150 || vehicle.speedOrZero > 20) &&
-      vehicle.updatedAt.difference(DateTime.now()) < const Duration(minutes: 1)) return true;
+      vehicle.updatedAt.difference(DateTime.now()).abs() < const Duration(minutes: 1)) return true;
   return false;
 }
 
@@ -253,25 +253,25 @@ abstract class TS {
   Widget display(BuildContext context, {bool boldTitle = false, bool showAffectedStop = false});
 }
 
-Widget displayTSs(Iterable<TS> ts) {
+Widget displayTSs(Iterable<TS> ts, {EdgeInsets? padding}) {
   if (ts.isEmpty) return Container();
   return Builder(builder: (BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(5),
+      padding: padding ?? const EdgeInsets.all(5),
       child: Column(children: ts.map((t) => t.display(context)).toList(growable: false)),
     );
   });
 }
 
 const List<String> acronymWords = ['central', 'norra', 'södra', 'östra', 'västra'];
-const List<String> excludeWords = ['station', '(tåg)', 'central', 'resecentrum', 'city', 'stasjon'];
+const List<String> excludeWords = ['station', '(tåg)', 'central', 'resecentrum', 'city', 'stasjon', 'resec'];
 const String vowels = 'aeiouyåäö';
 
 String shortStationName(String name, {bool useAcronyms = true}) {
-  var splits = name.firstPart().split(' ');
+  var words = name.firstPart().split(' ');
   var result = <String>[];
 
-  for (var word in splits) {
+  for (var word in words) {
     if (useAcronyms && acronymWords.contains(word.toLowerCase())) {
       result.add(word.substring(0, 1).toUpperCase());
       continue;
@@ -716,7 +716,7 @@ Future<Position> getPosition() async {
   }
 
   try {
-    return await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+    return await Geolocator.getCurrentPosition();
   } catch (e) {
     return Future.error(NoLocationError());
   }

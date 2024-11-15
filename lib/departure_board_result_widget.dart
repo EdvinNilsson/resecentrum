@@ -335,7 +335,7 @@ Future<void> getDepartureBoard(
 
     if (result.length < (state.target ?? 20) && state.timeSpan != 1439 && !secondPass) {
       state.timeSpan = 1439;
-      state.limit = null;
+      state.limit = state.target;
       getDepartureBoard(streamController, stopAreaGid, dateTime, departureBoardOptions, direction, stopPosition, state,
               secondPass: true, ignoreError: ignoreError, tsSubject: tsSubject)
           .whenComplete(() => secondPassDone = true);

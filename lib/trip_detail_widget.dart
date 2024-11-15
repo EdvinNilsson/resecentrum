@@ -347,6 +347,13 @@ class TripDetailsWidget extends StatelessWidget {
               );
             },
           ),
+        if (link != null && link.notes.isNotEmpty)
+          Column(
+            children: [
+              const Divider(),
+              displayTSs(link.notes, padding: const EdgeInsets.only(left: 5)),
+            ],
+          )
       ],
     );
   }
@@ -391,15 +398,11 @@ ConnectionValidation getConnectionValidation(JourneyLeg? before, Link? link, Jou
 
   var walkSpeed = getWalkSpeed(link?.distanceInMeters, duration);
 
-  var likelyTripToTripTransfer = before is TripLeg &&
-      after is TripLeg &&
-      before.plannedArrivalTime == after.departureTime &&
-      stopAreaFromStopPoint(before.destination.stopPoint.gid) == stopAreaFromStopPoint(after.origin.stopPoint.gid) &&
-      !after.isRiskOfMissingConnection;
+  var guaranteedChange = link?.notes.any((note) => note.type == 'guaranteed-change') ?? false;
 
   if (duration < Duration.zero || walkSpeed != null && walkSpeed > 10) return ConnectionValidation.highRisk;
 
-  if (!likelyTripToTripTransfer && (duration == Duration.zero || walkSpeed != null && walkSpeed > 6)) {
+  if (!guaranteedChange && (duration == Duration.zero || walkSpeed != null && walkSpeed > 6)) {
     return ConnectionValidation.mediumRisk;
   }
 
@@ -407,7 +410,7 @@ ConnectionValidation getConnectionValidation(JourneyLeg? before, Link? link, Jou
     return ConnectionValidation.lowRisk;
   }
 
-  if (!likelyTripToTripTransfer &&
+  if (!guaranteedChange &&
       before is TripLeg &&
       after is TripLeg &&
       !before.plannedArrivalTime.isBefore(after.departureTime)) {
@@ -419,7 +422,7 @@ ConnectionValidation getConnectionValidation(JourneyLeg? before, Link? link, Jou
 
 Widget? getConnectionValidationWidget(ConnectionValidation connectionValidation,
     {double gap = 5, Color? textColor, bool specificConnection = true}) {
-  String text = 'att missa anslutning${specificConnection ? 'en' : ''}';
+  String text = 'att missa byte${specificConnection ? 't' : ''}';
   return switch (connectionValidation) {
     ConnectionValidation.lowRisk =>
       iconAndText(Icons.error, 'Risk $text', gap: gap, iconColor: Colors.orange, textColor: textColor),

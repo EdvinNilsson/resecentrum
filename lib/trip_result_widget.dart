@@ -538,7 +538,8 @@ class _TripResultWidgetState extends State<TripResultWidget> {
     return maxWaitTime;
   }
 
-  bool _anyNote(Journey journey) => journey.tripLegs.any(_anyNoteLeg);
+  bool _anyNote(Journey journey) =>
+      journey.tripLegs.any(_anyNoteLeg) || journey.allJourneyLegs.any((leg) => leg.notes.isNotEmpty);
 
   bool _requireBooking(Journey journey) => journey.tripLegs.any((leg) => leg.notes.any((note) => note.booking));
 

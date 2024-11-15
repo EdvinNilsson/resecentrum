@@ -585,7 +585,9 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     var firstStop = serviceJourney.callsOnServiceJourney!.firstWhereOrNull((stop) => stop.index == journeyPart.fromIdx);
     var lastStop = serviceJourney.callsOnServiceJourney!.lastWhereOrNull((stop) => stop.index == journeyPart.toIdx);
 
-    bool draw = firstStop == null && journeyPart.fromIdx <= serviceJourney.callsOnServiceJourney!.first.index;
+    int journeyStartIdx = serviceJourney.callsOnServiceJourney!.first.index;
+    bool draw = firstStop == null && journeyPart.fromIdx <= journeyStartIdx && journeyPart.toIdx >= journeyStartIdx;
+
     List<LatLng> line = [];
     for (var point in serviceJourney.serviceJourneyCoordinates!) {
       if (point == firstStop?.position) {
