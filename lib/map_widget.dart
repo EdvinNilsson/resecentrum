@@ -299,7 +299,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
 
     var refStops = widget._mapJourneys
         .map((j) => j.refStopPointGid)
-        .whereNotNull()
+        .nonNulls
         .map((stopAreaGid) => _journeyDetails
             .expand((journeyDetails) => journeyDetails.serviceJourneys)
             .expand((serviceJourney) => serviceJourney.callsOnServiceJourney!)
@@ -393,7 +393,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     }
   }
 
-  void _onFeatureTap(dynamic featureId, math.Point<double> point, LatLng latLng) async {
+  void _onFeatureTap(dynamic featureId, math.Point<double> point, LatLng latLng, String layerId) async {
     var vehicle = _vehicles.values.firstWhereOrNull((v) => v.journeyId == featureId);
     if (vehicle == null) return;
     _showVehicleSheet(vehicle);

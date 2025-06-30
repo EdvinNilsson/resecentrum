@@ -53,7 +53,7 @@ class PlaneraResa {
     const base64 = Base64Codec();
     const utf8 = Utf8Codec();
 
-    const String auth = '${const String.fromEnvironment('AUTH_KEY')}:${const String.fromEnvironment('AUTH_SECRET')}';
+    const String auth = '${String.fromEnvironment('AUTH_KEY')}:${String.fromEnvironment('AUTH_SECRET')}';
 
     var dio = Dio(BaseOptions(
         baseUrl: 'https://ext-api.vasttrafik.se',

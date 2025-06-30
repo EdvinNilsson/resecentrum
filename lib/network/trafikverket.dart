@@ -38,7 +38,7 @@ class Trafikverket {
 
   static Future<Iterable<TrainAnnouncement>?> getTrainJourney(int trainNumber, DateTime start, DateTime end) async {
     return await _callApi('''
-<QUERY objecttype="TrainAnnouncement" schemaversion="1.8" orderby="AdvertisedTimeAtLocation, ActivityType">
+<QUERY objecttype="TrainAnnouncement" schemaversion="1.9" orderby="AdvertisedTimeAtLocation, ActivityType">
     <FILTER>
         <AND>
             <EQ name="AdvertisedTrainIdent" value="$trainNumber" />
@@ -69,7 +69,7 @@ class Trafikverket {
 
   static Future<Iterable<TrainAnnouncement>?> getTrainTrips(Set<TrainLegRef> trips) async {
     return await _callApi('''
-<QUERY objecttype="TrainAnnouncement" schemaversion="1.8" orderby="AdvertisedTimeAtLocation">
+<QUERY objecttype="TrainAnnouncement" schemaversion="1.9" orderby="AdvertisedTimeAtLocation">
     <FILTER>
         <AND>
             <EQ name="Advertised" value="true" />
@@ -125,7 +125,7 @@ class Trafikverket {
     var filteredBoard = departureBoard.where((d) => d.arrival == arrival && d.isTrain);
     if (filteredBoard.isEmpty) return [];
     return await _callApi('''
-<QUERY objecttype="TrainAnnouncement" schemaversion="1.8">
+<QUERY objecttype="TrainAnnouncement" schemaversion="1.9">
     <FILTER>
         <AND>
             <EQ name="ActivityType" value="${arrival ? 'Ankomst' : 'Avgang'}" />
@@ -159,7 +159,7 @@ class Trafikverket {
 
   static Future<String?> getTrainStationFromLocation(LatLng position) async {
     return await _callApi('''
-<QUERY objecttype="TrainStation" schemaversion="1.4">
+<QUERY objecttype="TrainStation" namespace="rail.infrastructure" schemaversion="1.5">
     <FILTER>
         <WITHIN name="Geometry.WGS84" shape="center" value="${position.longitude} ${position.latitude}" radius="500m" />
         <EQ name="Advertised" value="true" />
@@ -172,7 +172,7 @@ class Trafikverket {
   }
 
   static Future<Iterable<TrainMessage>?> getTrainStationMessage(
-      String locationSignature, DateTime start, DateTime end, String? direction) async {
+      String locationSignature, DateTime? start, DateTime end, String? direction) async {
     return await _callApi('''
 <QUERY objecttype="TrainMessage" schemaversion="1.7" orderby="LastUpdateDateTime desc">
     <FILTER>
@@ -181,10 +181,11 @@ class Trafikverket {
                 <EQ name="TrafficImpact.AffectedLocation.LocationSignature" value="$locationSignature" />
                 <EQ name='TrafficImpact.FromLocation' value='$locationSignature'/>
                 <EQ name='TrafficImpact.ToLocation' value='$locationSignature'/>
-			      </OR>
+            </OR>
+            <EQ name="Deleted" value="false" />
             <EQ name="TrafficImpact.AffectedLocation.ShouldBeTrafficInformed" value="true" />
             <LTE name="StartDateTime" value="${end.toIso8601String()}" />
-            <GTE name="PrognosticatedEndDateTimeTrafficImpact" value="${start.toIso8601String()}" />
+            ${start != null ? '<GTE name="PrognosticatedEndDateTimeTrafficImpact" value="${start.toIso8601String()}" />' : ''}
             ${direction != null ? '<EQ name="TrafficImpact.AffectedLocation.LocationSignature" value="$direction" />' : ''}
         </AND>
     </FILTER>
@@ -196,16 +197,26 @@ class Trafikverket {
     });
   }
 
-  static Future<Iterable<TrainMessage>?> getTrainMessage(
-      Iterable<String> locationSignatures, DateTime start, DateTime end) async {
+  static Future<Iterable<TrainMessage>?> getTrainMessage(Iterable<String> locationSignatures,
+      Iterable<String> infoLocationSignatures, DateTime start, DateTime end) async {
+    var now = DateTime.now().isBefore(end);
     return await _callApi('''
 <QUERY objecttype="TrainMessage" schemaversion="1.7" orderby="LastUpdateDateTime desc">
     <FILTER>
         <AND>
-            ${locationSignatures.map((l) => '''<IN name="TrafficImpact.AffectedLocation.LocationSignature" value="$l" />
-            ''').join()}
+            <OR>
+                <AND>
+                    ${locationSignatures.map((l) => '''<IN name="TrafficImpact.AffectedLocation.LocationSignature" value="$l" />
+                    ''').join()}
+                </AND>
+                ${infoLocationSignatures.isNotEmpty ? """<AND>
+                    ${infoLocationSignatures.map((l) => '''<IN name="TrafficImpact.AffectedLocation.LocationSignature" value="$l" />
+                    ''').join()}
+                </AND>""" : ''}
+            </OR>
             <LTE name="StartDateTime" value="${end.toIso8601String()}" />
-            <GTE name="PrognosticatedEndDateTimeTrafficImpact" value="${start.toIso8601String()}" />
+            ${!now ? '<GTE name="PrognosticatedEndDateTimeTrafficImpact" value="${start.toIso8601String()}" />' : ''}
+            <EQ name="Deleted" value="false" />
         </AND>
     </FILTER>
     <INCLUDE>Header</INCLUDE>
@@ -220,7 +231,7 @@ class Trafikverket {
     bool now = dateTime == null;
     dateTime ??= DateTime.now();
     return await _callApi('''
-<QUERY objecttype="TrainAnnouncement" schemaversion="1.8" orderby="AdvertisedTimeAtLocation">
+<QUERY objecttype="TrainAnnouncement" schemaversion="1.9" orderby="AdvertisedTimeAtLocation">
     <FILTER>
         <AND>
         <EQ name="LocationSignature" value="$locationSignature" />

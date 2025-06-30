@@ -145,7 +145,7 @@ class HomeState extends State<Home> {
           var location = await getLocationFromCoord(LatLng(lat, lng), stopMaxDist: 100);
           setTripLocation(location, isOrigin: false);
         } on DisplayableError catch (e) {
-          if (!context.mounted) return;
+          if (!mounted) return;
           noLocationFound(context, description: e.description ?? e.message);
         }
       }

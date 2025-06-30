@@ -45,7 +45,7 @@ extension BoolIterableExt on Iterable<bool> {
 }
 
 extension ColorExt on Color {
-  String toHexCode() => '#${(value & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+  String toHexCode() => '#${(toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
 }
 
 extension DurationExt on Duration {

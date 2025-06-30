@@ -345,21 +345,28 @@ Future<void> getDepartureBoard(
     }
 
     // Workaround for bug in API where some departures after midnight are missing when direction is set.
-    if (lastPass &&
-        direction != null &&
-        (departures.length < 20 || (dateTime ?? DateTime.now()).day != departures.last.plannedTime.day)) {
-      var departuresAfterMidnight = await PlaneraResa.departures(stopAreaGid,
-              startDateTime: (dateTime ?? DateTime.now()).startOfNextDay(),
-              directionGid: direction.gid,
-              limit: state.limit ?? 20,
-              timeSpanInMinutes: state.timeSpan)
-          .suppress();
+    if (lastPass && direction != null) {
+      DateTime? startDateTime;
+      if (departures.length < 20 || (dateTime ?? DateTime.now()).day != departures.last.plannedTime.day) {
+        startDateTime = (dateTime ?? DateTime.now()).startOfNextDay();
+      } else if (!departures.last.plannedTime.isSameTransportDayAs(dateTime ?? DateTime.now())) {
+        startDateTime = dateTime ?? DateTime.now();
+      }
 
-      result = departures
-          .followedBy(
-              departuresAfterMidnight?.where((d) => !result.any((e) => e.serviceJourney.gid == d.serviceJourney.gid)) ??
-                  [])
-          .toList();
+      if (startDateTime != null) {
+        var departuresAfterMidnight = await PlaneraResa.departures(stopAreaGid,
+                startDateTime: startDateTime,
+                directionGid: direction.gid,
+                limit: state.limit ?? 20,
+                timeSpanInMinutes: state.timeSpan?.clamp(0, 720))
+            .suppress();
+
+        result = departures
+            .followedBy(departuresAfterMidnight
+                    ?.where((d) => !result.any((e) => e.serviceJourney.gid == d.serviceJourney.gid)) ??
+                [])
+            .toList();
+      }
     }
 
     var notes = <TS>[];
@@ -448,8 +455,8 @@ Future<void> _addTrainInfo(List<Departure> result, DepartureBoardOptions departu
     directionSignature = await Trafikverket.getTrainStationFromLocation(direction.position);
   }
 
-  var trainStationMessages = Trafikverket.getTrainStationMessage(
-      locationSignature, dateTime ?? DateTime.now(), result.last.time, directionSignature);
+  var trainStationMessages =
+      Trafikverket.getTrainStationMessage(locationSignature, dateTime, result.last.time, directionSignature);
 
   var lateTrains = await lateTrainsRequest;
 

@@ -216,7 +216,9 @@ Future<ServiceJourneyDetailsWithTrafficSituations> getJourneyDetails(DetailsRef 
           if (journeyPartNotes.any((n) => n.match(description, stop))) continue;
           if (description.contains('tannar i ') ||
               description.contains('tannar vid') ||
-              description.contains('tannar även')) continue;
+              description.contains('tannar även')) {
+            continue;
+          }
 
           int end = stop;
           for (; stopNotesLowPriority.tryElementAt(end + 1)?.contains(description) ?? false; end++) {}
@@ -279,7 +281,10 @@ Future<ServiceJourneyDetailsWithTrafficSituations> getJourneyDetails(DetailsRef 
           ..addAll(trainJourney.map((t) => t.trainComposition).expand((d) => d.map((text) => Note(text))));
 
         notes.addAll((await Trafikverket.getTrainMessage(
-                trainJourney.map((t) => t.locationSignature).toSet(), allStops.first.time, allStops.last.time)) ??
+                trainJourney.map((t) => t.locationSignature).toSet(),
+                trainJourney.where((t) => t.deviation.contains('Se info!')).map((t) => t.locationSignature).toSet(),
+                allStops.first.time,
+                allStops.last.time)) ??
             <TrainMessage>[]);
 
         normalTs = normalTs.followedBy(notes);
@@ -359,7 +364,7 @@ RenderObjectWidget journeyDetailList(ServiceJourneyDetails serviceJourneyDetails
                     !isTrain &&
                     (validTimeInterval == null ||
                         (stop.plannedDepartureTime?.isBefore(validTimeInterval!.validUntil) ?? true)),
-                boardingOnly: stop.arrivalTime == null && !stop.isCancelled && !isFirstOrLastStop && !isTrain,
+                boardingOnly: stop.plannedArrivalTime == null && !stop.isCancelled && !isFirstOrLastStop && !isTrain,
                 noteIcon: stopNoteIcons.elementAt(i),
                 noteIconWithoutPlatform: noteIconWithoutPlatform,
                 constraints: const BoxConstraints(minHeight: 32),

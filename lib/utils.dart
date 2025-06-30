@@ -28,9 +28,8 @@ String getDelayString(int? delay, {DepartureState? state}) {
 
 bool hasDeparted(VehiclePosition vehicle, LatLng position) {
   var distance = distanceBetween(vehicle.position, position);
-  if ((distance > 150 || vehicle.speedOrZero > 20) &&
-      vehicle.updatedAt.difference(DateTime.now()).abs() < const Duration(minutes: 1)) return true;
-  return false;
+  return (distance > 150 || vehicle.speedOrZero > 20) &&
+      vehicle.updatedAt.difference(DateTime.now()).abs() < const Duration(minutes: 1);
 }
 
 Text _countdownText(String text, {TextStyle? style}) =>

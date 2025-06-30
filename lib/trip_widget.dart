@@ -50,10 +50,12 @@ class TripWidget extends StatelessWidget {
                             fromFieldController.setLocation(currentLocation);
 
                             await currentLocation.location(forceRefresh: true).catchError((e) {
-                              if (e is DisplayableError) {
-                                noLocationFound(context, description: e.description ?? e.message);
-                              } else {
-                                noLocationFound(context);
+                              if (context.mounted) {
+                                if (e is DisplayableError) {
+                                  noLocationFound(context, description: e.description ?? e.message);
+                                } else {
+                                  noLocationFound(context);
+                                }
                               }
                               return null;
                             });

@@ -423,7 +423,9 @@ class _TripResultWidgetState extends State<TripResultWidget> {
     for (var (before, leg, after) in trip.journeyLegTriplets) {
       if (leg is ConnectionLink &&
           leg.transportMode == TransportMode.walk &&
-          leg.origin.stopPoint.stopArea!.gid == leg.destination.stopPoint.stopArea!.gid) continue;
+          leg.origin.stopPoint.stopArea!.gid == leg.destination.stopPoint.stopArea!.gid) {
+        continue;
+      }
 
       flex = leg.departureTime.difference(startTime).inMinutes - minutes;
       if (flex > 0) {
