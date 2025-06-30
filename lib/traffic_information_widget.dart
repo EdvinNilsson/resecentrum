@@ -126,11 +126,10 @@ html {
     height: auto;
 }
 
-
-
 @media (prefers-color-scheme: dark) {
     :root {
         --card-color: ${MyApp.darkTheme().colorScheme.surfaceBright.toHexCode()};
+        --canvas-color: ${MyApp.darkTheme().canvasColor.toHexCode()};
     }
 
     body {
@@ -138,7 +137,11 @@ html {
     }
     
     .page, body {
-        background-color: ${MyApp.darkTheme().canvasColor.toHexCode()};
+        background-color: var(--canvas-color);
+    }
+    
+    .bg-white {
+        background-color: var(--canvas-color) !important;
     }
      
     a, a:hover, .btn--as-text {
@@ -148,10 +151,6 @@ html {
     .traffic-situation-one-dot-one {
         background-color: var(--card-color) !important;
         border: solid #505050 !important;
-    }
-    
-    .line-list-showcase__transport-mode {
-        filter: invert(75%);
     }
     
     .autocomplete {
@@ -198,8 +197,13 @@ html {
         background-color: var(--card-color) !important;
     }
     
-    .btn.btn-link, .selected-filter-value__close {
+    .btn.btn-link, .selected-filter-value__close, .line-list-showcase__transport-mode, .municipality-list-showcase__icon, .traffic-situation-two-dot-zero__calendar-icon {
         filter: invert(1) grayscale(1);
+    }
+    
+    .traffic-situation-tag {
+        border-color: var(--canvas-color);
+        outline-color: var(--canvas-color);
     }
 }
 ''';
