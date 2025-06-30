@@ -232,6 +232,24 @@ Icon getNoteIcon(Severity severity, {bool infoOutline = true}) => switch (severi
       _ => const Icon(Icons.error, color: Colors.orange)
     };
 
+Widget addSeverityIcon(Widget widget, Severity severity, BuildContext context, Line line, Color bgColor) {
+  var icon = getNoteIcon(severity, infoOutline: false);
+  if (icon.icon == Icons.info) icon = const Icon(Icons.info, color: Colors.white);
+  var iconColor = icon.color ?? Theme.of(context).iconTheme.color ?? Colors.black;
+  var bgContrast = colorDiff(iconColor, line.backgroundColor);
+  bool lowContrast = bgContrast < 500 * 500 && bgContrast < colorDiff(iconColor, line.foregroundColor);
+
+  Widget iconWidget = lowContrast || (icon.icon == Icons.info && Theme.of(context).brightness == Brightness.light)
+      ? Stack(alignment: Alignment.center, children: [
+          if (lowContrast) Container(decoration: BoxDecoration(color: line.foregroundColor), width: 4, height: 8),
+          Icon(icon.icon, color: lowContrast ? line.foregroundColor : line.backgroundColor, size: 18),
+          Icon(icon.icon, color: icon.color, size: 16),
+        ])
+      : Icon(icon.icon, color: icon.color, size: 16);
+
+  return Stack(clipBehavior: Clip.none, children: [widget, Positioned(top: -4, right: -4, child: iconWidget)]);
+}
+
 T? maxOrNull<T>(Comparable<T>? a, T? b) {
   if (a == null) return b;
   if (b == null) return a as T;
@@ -295,9 +313,8 @@ String shortStationName(String name, {bool useAcronyms = true}) {
 BoxDecoration lineBoxDecoration(Line line, Color bgColor, BuildContext context) {
   return BoxDecoration(
     borderRadius: BorderRadius.circular(3),
-    border: colorDiff2(line.backgroundColor, bgColor) < 60 * 60
-        ? Border.all(color: line.foregroundColor, width: 0.5)
-        : null,
+    border:
+        colorDiff(line.backgroundColor, bgColor) < 60 * 60 ? Border.all(color: line.foregroundColor, width: 0.5) : null,
     color: line.backgroundColor,
   );
 }
@@ -351,9 +368,9 @@ Widget trackChange(String estimatedPlatform) {
   );
 }
 
-double colorDiff2(Color a, Color b) {
-  var dr = (a.red - b.red), dg = (a.green - b.green), db = (a.blue - b.blue);
-  var dl = (0.2126 * dr + 0.7152 * dg + 0.0722 * db) * 8;
+double colorDiff(Color a, Color b) {
+  var dr = (a.r - b.r).abs(), dg = (a.g - b.g).abs(), db = (a.b - b.b).abs();
+  var dl = (0.2126 * dr + 0.7152 * dg + 0.0722 * db) * 8 * 0xFF;
   return dr * dr + 4 * dg * dg + db * db + dl * dl;
 }
 

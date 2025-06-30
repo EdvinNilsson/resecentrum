@@ -148,7 +148,8 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
                   return CustomScrollView(slivers: [
                     if (_dateTime != null && departureBoard.data!.isNotEmpty) dateBar(_dateTime!),
                     SliverSafeArea(
-                      sliver: departureBoardList(departureBoard.data!, bgColor, onTap: (context, departure) {
+                      sliver: departureBoardList(departureBoard.data!, bgColor,
+                          tsStream: _trafficSituationSubject.stream, onTap: (context, departure) {
                         _timer?.cancel();
                         Navigator.push(context, MaterialPageRoute(builder: (context) {
                           return JourneyDetailsWidget(DepartureDetailsRef.fromDeparture(departure));
@@ -554,7 +555,9 @@ Future<void> _addTrainInfo(List<Departure> result, DepartureBoardOptions departu
 }
 
 Widget departureBoardList(Iterable<Departure> departures, Color bgColor,
-    {void Function(BuildContext, Departure)? onTap, void Function(BuildContext, Departure)? onLongPress}) {
+    {void Function(BuildContext, Departure)? onTap,
+    void Function(BuildContext, Departure)? onLongPress,
+    Stream<Iterable<TS>>? tsStream}) {
   if (departures.isEmpty) return SliverFillRemaining(child: noDataPage('Inga avgångar hittades'));
   return SliverPadding(
     padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 3),
@@ -562,6 +565,28 @@ Widget departureBoardList(Iterable<Departure> departures, Color bgColor,
       equalityChecker: (a, b) => a.serviceJourney.gid == b.serviceJourney.gid && a.plannedTime == b.plannedTime,
       items: departures.toList(growable: false),
       builder: (BuildContext context, Departure departure) {
+        var lineIcon = StreamBuilder(
+            stream: tsStream,
+            builder: (context, snapshot) {
+              var lineIcon = lineIconFromLine(departure.serviceJourney.line, bgColor, context);
+              if (!snapshot.hasData) return lineIcon;
+
+              var trafficSituations = snapshot.data!.whereType<TrafficSituation>().where((ts) =>
+                  (ts.affectedLines.any((line) =>
+                          line.gid == departure.serviceJourney.line.gid &&
+                          ts.affectedStopPoints.any((stopPoint) => stopPoint.gid == departure.stopPoint.gid)) &&
+                      !departure.isTrain &&
+                      isPresent(ts.startTime, ts.endTime, departure.plannedTime, departure.time)) ||
+                  ts.affectedJourneys.any((journey) => journey.gid == departure.serviceJourney.gid));
+
+              if (trafficSituations.isEmpty) return lineIcon;
+
+              var severity = trafficSituations.map((ts) => ts.severity).max;
+              var line = departure.serviceJourney.line;
+
+              return addSeverityIcon(lineIcon, severity, context, line, bgColor);
+            });
+
         return Card(
             child: InkWell(
                 onTap: onTap != null ? () => onTap(context, departure) : null,
@@ -577,7 +602,7 @@ Widget departureBoardList(Iterable<Departure> departures, Color bgColor,
                               bold: false, multiline: true)),
                       Container(constraints: const BoxConstraints(minWidth: 28), child: getCountdown(departure)),
                       const SizedBox(width: 8),
-                      lineIconFromLine(departure.serviceJourney.line, bgColor, context),
+                      lineIcon,
                       const SizedBox(width: 10),
                       Expanded(
                           child: departure.arrival

@@ -441,26 +441,10 @@ class _TripResultWidgetState extends State<TripResultWidget> {
       };
 
       if (leg is TripLeg && _anyNoteLeg(leg)) {
-        var icon = _getNotesIconLeg(leg);
-
-        if (icon.icon == Icons.info) icon = const Icon(Icons.info, color: Colors.white);
-
+        var severity = leg.notes.followedBy(leg.origin.notes).followedBy(leg.destination.notes).map((note) => note.severity).max;
         var line = leg.serviceJourney.line;
 
-        var iconColor = icon.color ?? Theme.of(context).iconTheme.color!;
-        var bgContrast = colorDiff2(iconColor, line.backgroundColor);
-        bool lowContrast = bgContrast < 500 * 500 && bgContrast < colorDiff2(iconColor, line.foregroundColor);
-
-        Widget iconWidget = lowContrast || (icon.icon == Icons.info && Theme.of(context).brightness == Brightness.light)
-            ? Stack(alignment: Alignment.center, children: [
-                if (lowContrast) Container(decoration: BoxDecoration(color: line.foregroundColor), width: 4, height: 8),
-                Icon(icon.icon, color: lowContrast ? line.foregroundColor : line.backgroundColor, size: 18),
-                Icon(icon.icon, color: icon.color, size: 16),
-              ])
-            : Icon(icon.icon, color: icon.color, size: 16);
-
-        legWidget =
-            Stack(clipBehavior: Clip.none, children: [legWidget, Positioned(top: -5, right: -5, child: iconWidget)]);
+        legWidget = addSeverityIcon(legWidget, severity, context, line, bgColor);
       }
 
       children.add(Expanded(flex: flex, child: legWidget));
@@ -558,12 +542,6 @@ class _TripResultWidgetState extends State<TripResultWidget> {
   Icon _getNotesIcon(Journey journey) {
     if (_noteOfSeverity(journey, Severity.high)) return getNoteIcon(Severity.high);
     if (_noteOfSeverity(journey, Severity.normal)) return getNoteIcon(Severity.normal);
-    return getNoteIcon(Severity.low, infoOutline: false);
-  }
-
-  Icon _getNotesIconLeg(TripLeg leg) {
-    if (_noteOfSeverityLeg(leg, Severity.high)) return getNoteIcon(Severity.high);
-    if (_noteOfSeverityLeg(leg, Severity.normal)) return getNoteIcon(Severity.normal);
     return getNoteIcon(Severity.low, infoOutline: false);
   }
 

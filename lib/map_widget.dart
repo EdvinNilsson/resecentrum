@@ -901,8 +901,8 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
                           slivers: [
                             appBar,
                             SliverSafeArea(
-                              sliver:
-                                  departureBoardList(departureBoardWithTs.data!, bgColor, onTap: (context, departure) {
+                              sliver: departureBoardList(departureBoardWithTs.data!, bgColor,
+                                  tsStream: trafficSituationSubject.stream, onTap: (context, departure) {
                                 Navigator.pop(context);
                                 _showJourneyDetailSheet(departure);
                               }, onLongPress: (context, departure) {
