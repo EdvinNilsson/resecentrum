@@ -38,13 +38,27 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
   Timer? _timer;
   DateTime? _dateTime;
   final GlobalKey<RefreshIndicatorState> _refreshKey = GlobalKey();
+  ValueListenable<bool>? _tickerModeNotifier;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _dateTime = widget._initialDateTime;
+    _updateDepartureBoard();
     _initTimer(updateIntermittently: false);
+    TickerMode.getNotifier(context).addListener(_onTickerModeChange);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final newNotifier = TickerMode.getNotifier(context);
+    if (_tickerModeNotifier != newNotifier) {
+      _tickerModeNotifier?.removeListener(_onTickerModeChange);
+      _tickerModeNotifier = newNotifier;
+      _tickerModeNotifier?.addListener(_onTickerModeChange);
+    }
   }
 
   @override
@@ -53,6 +67,7 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
     _timer?.cancel();
     _departureStreamController.close();
     _trafficSituationSubject.close();
+    _tickerModeNotifier?.removeListener(_onTickerModeChange);
     super.dispose();
   }
 
@@ -64,6 +79,16 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
         _timer?.isActive == false &&
         ModalRoute.of(context)?.isCurrent == true) {
       _initTimer();
+    }
+  }
+
+  void _onTickerModeChange() {
+    if (TickerMode.getNotifier(context).value) {
+      if (_timer?.isActive == false) {
+        _initTimer();
+      }
+    } else {
+      _timer?.cancel();
     }
   }
 
@@ -81,7 +106,6 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
 
   @override
   Widget build(BuildContext context) {
-    _updateDepartureBoard();
     return Scaffold(
         appBar: AppBar(
             title: StreamBuilder(stream: _departureStreamController.stream, builder: (context, snapshot) => _title()),
@@ -163,11 +187,12 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
                       sliver: departureBoardList(departureBoard.data!, bgColor,
                           tsStream: _trafficSituationSubject.stream, onTap: (context, departure) {
                         _timer?.cancel();
-                        Navigator.push(context, MaterialPageRoute(builder: (context) {
+                        Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (context) {
                           return JourneyDetailsWidget(DepartureDetailsRef.fromDeparture(departure));
                         })).then((_) => _initTimer());
                       }, onLongPress: (context, departure) {
                         Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
+                            .push<MapWidget>(MaterialPageRoute(builder: (context) {
                           _timer?.cancel();
                           return MapWidget([
                             MapJourney(

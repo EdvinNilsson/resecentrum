@@ -50,6 +50,8 @@ void main() async {
 const Color primaryColor = Color.fromRGBO(0, 121, 180, 1);
 const Color primaryDarkColor = Color.fromRGBO(13, 71, 116, 1);
 
+final GlobalKey<HomeState> homeKey = GlobalKey();
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -75,9 +77,24 @@ class MyApp extends StatelessWidget {
         ],
         theme: lightTheme(),
         darkTheme: darkTheme(),
-        home: const Home(),
+        home: Home(key: homeKey),
+        onNavigationNotification: _onNavigationNotification,
       ),
     );
+  }
+
+  bool _onNavigationNotification(NavigationNotification notification) {
+    switch (WidgetsBinding.instance.lifecycleState) {
+      case null:
+      case AppLifecycleState.detached:
+      case AppLifecycleState.inactive:
+        return true;
+      case AppLifecycleState.resumed:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+        SystemNavigator.setFrameworkHandlesBack(notification.canHandlePop || (homeKey.currentState?.canPop == true));
+        return true;
+    }
   }
 
   static ThemeData lightTheme() {

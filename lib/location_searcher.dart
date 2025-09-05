@@ -334,19 +334,17 @@ class _LocationFieldState extends State<LocationField> {
         autofocus: true,
         focusNode: widget.focusNode,
         onTap: () async {
-          Location? result = await Navigator.push(
-              context,
-              PageRouteBuilder(
-                pageBuilder: (_, __, ___) => LocationSearcherWidget(
-                    widget._controller._location is CurrentLocation
-                        ? (widget._controller._location as CurrentLocation).cachedLocation?.name ?? ''
-                        : widget._textController.text,
-                    widget._hintText,
-                    widget.onlyStops,
-                    widget._controller.location),
-                transitionDuration: Duration.zero,
-                reverseTransitionDuration: Duration.zero,
-              ));
+          Location? result = await Navigator.of(context, rootNavigator: true).push(PageRouteBuilder(
+            pageBuilder: (_, __, ___) => LocationSearcherWidget(
+                widget._controller._location is CurrentLocation
+                    ? (widget._controller._location as CurrentLocation).cachedLocation?.name ?? ''
+                    : widget._textController.text,
+                widget._hintText,
+                widget.onlyStops,
+                widget._controller.location),
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+          ));
           if (result == null) return;
           widget._controller.setLocation(result);
         });

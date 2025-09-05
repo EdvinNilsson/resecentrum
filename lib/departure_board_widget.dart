@@ -27,6 +27,7 @@ class DepartureBoardWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(centerTitle: true, title: Text('Nästa tur')),
       body: SafeArea(
         child: Column(
           children: [

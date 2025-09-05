@@ -3,11 +3,13 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
 import 'departure_board_result_widget.dart';
 import 'departure_board_widget.dart';
 import 'extensions.dart';
+import 'favorites.dart';
 import 'location_searcher.dart';
 import 'main.dart';
 import 'map_widget.dart';
@@ -29,12 +31,24 @@ class HomeState extends State<Home> {
   int _currentIndex = mainBox.get('tab', defaultValue: 0);
   late AppLinks _appLinks;
   StreamSubscription<Uri>? _linkSubscription;
+  final GlobalKey<TrafficInformationState> _trafficInfoKey = GlobalKey();
   final GlobalKey<MapWidgetState> _mapKey = GlobalKey();
   Location? _searchedLocation;
+  int? _lastTabIndex;
 
   late final List<Widget> _tabs;
+  final List<({IconData icon, String label})> _tabNames = [
+    (label: 'Sök resa', icon: Icons.tram),
+    (label: 'Nästa tur', icon: Icons.departure_board),
+    (label: 'Trafikinfo', icon: Icons.error_outline),
+    (label: 'Karta', icon: Icons.map),
+  ];
 
-  final List<String> _pageTitles = ['Sök resa', 'Nästa tur', 'Trafikinformation', 'Karta'];
+  final List<Widget?> _navigators = List.filled(4, null);
+  final List<GlobalKey<NavigatorState>> _navigatorKeys = List.generate(4, (_) => GlobalKey<NavigatorState>());
+
+  bool get canPop =>
+      _lastTabIndex != null || Navigator.of(_navigatorKeys[_currentIndex].currentContext ?? context).canPop();
 
   @override
   void initState() {
@@ -42,26 +56,16 @@ class HomeState extends State<Home> {
     _tabs = [
       TripWidget(),
       DepartureBoardWidget(),
-      const TrafficInformationWidget(),
-      MapWidget(const [], key: _mapKey),
-    ];
-    _initDeepLinks();
-  }
-
-  @override
-  void dispose() {
-    _linkSubscription?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    var appbar = AppBar(
-      centerTitle: true,
-      title: Text(_pageTitles[_currentIndex]),
-      actions: [
-        if (_currentIndex == 3)
-          IconButton(
+      Scaffold(
+        appBar: AppBar(centerTitle: true, title: Text('Trafikinformation')),
+        body: TrafficInformationWidget(key: _trafficInfoKey),
+      ),
+      Scaffold(
+        appBar: AppBar(
+          centerTitle: true,
+          title: Text('Karta'),
+          actions: [
+            IconButton(
               onPressed: () async {
                 Location? result = await Navigator.push(
                     context,
@@ -75,51 +79,137 @@ class HomeState extends State<Home> {
                 _searchedLocation = result;
                 _mapKey.currentState?.highlightLocation(result);
               },
-              icon: const Icon(Icons.search))
-      ],
-    );
+              icon: const Icon(Icons.search),
+            )
+          ],
+        ),
+        body: MapWidget(const [], key: _mapKey),
+      ),
+    ];
+    _initDeepLinks();
+  }
+
+  @override
+  void dispose() {
+    _linkSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     var landscape = MediaQuery.of(context).orientation == Orientation.landscape;
-    return Scaffold(
-      appBar: appbar,
-      body: SafeArea(
-        child: Row(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: _onPop,
+      child: Scaffold(
+        body: Row(
           children: [
             if (landscape)
               NavigationRail(
                 onDestinationSelected: _onTabTapped,
                 labelType: NavigationRailLabelType.all,
-                destinations: const [
-                  NavigationRailDestination(icon: Icon(Icons.tram), label: Text('Sök resa')),
-                  NavigationRailDestination(icon: Icon(Icons.departure_board), label: Text('Nästa tur')),
-                  NavigationRailDestination(icon: Icon(Icons.error_outline), label: Text('Trafikinfo')),
-                  NavigationRailDestination(icon: Icon(Icons.map), label: Text('Karta')),
-                ],
+                destinations: _tabNames
+                    .map((tab) => NavigationRailDestination(icon: Icon(tab.icon), label: Text(tab.label)))
+                    .toList(growable: false),
                 selectedIndex: _currentIndex,
               ),
-            Expanded(child: _tabs[_currentIndex]),
+            if (landscape) const VerticalDivider(width: 1),
+            Expanded(
+              child: Stack(children: [
+                _buildOffstageNavigator(0),
+                _buildOffstageNavigator(1),
+                _buildOffstageNavigator(2),
+                _buildVisibilityNavigator(3),
+              ]),
+            )
           ],
         ),
+        bottomNavigationBar: !landscape
+            ? NavigationBar(
+                onDestinationSelected: _onTabTapped,
+                destinations: _tabNames
+                    .map((tab) => NavigationDestination(icon: Icon(tab.icon), label: tab.label))
+                    .toList(growable: false),
+                selectedIndex: _currentIndex,
+              )
+            : null,
       ),
-      bottomNavigationBar: !landscape
-          ? NavigationBar(
-              onDestinationSelected: _onTabTapped,
-              destinations: const [
-                NavigationDestination(icon: Icon(Icons.tram), label: 'Sök resa'),
-                NavigationDestination(icon: Icon(Icons.departure_board), label: 'Nästa tur'),
-                NavigationDestination(icon: Icon(Icons.error_outline), label: 'Trafikinfo'),
-                NavigationDestination(icon: Icon(Icons.map), label: 'Karta'),
-              ],
-              selectedIndex: _currentIndex,
-            )
-          : null,
     );
   }
 
+  void _onPop(bool didPop, _) {
+    if (didPop) return;
+
+    final nav = _navigatorKeys[_currentIndex].currentState!;
+    if (nav.canPop()) {
+      nav.pop();
+      return;
+    }
+
+    if (_lastTabIndex != null) {
+      _onTabTapped(_lastTabIndex!);
+      _lastTabIndex = null;
+      var ctx = _navigatorKeys[_currentIndex].currentContext;
+      if (ctx != null) NavigationNotification(canHandlePop: canPop).dispatch(ctx);
+      return;
+    }
+
+    SystemNavigator.pop();
+  }
+
   void _onTabTapped(int index) {
-    setState(() {
-      _currentIndex = index;
-    });
-    if (index < 2) mainBox.put('tab', index);
+    if (index == _currentIndex) {
+      _navigatorKeys[index].currentState?.popUntil((route) => route.isFirst);
+
+      if (index == 2) {
+        _trafficInfoKey.currentState?.scrollToTop();
+      }
+    } else {
+      _lastTabIndex = _currentIndex;
+      setState(() {
+        _currentIndex = index;
+      });
+      var ctx = _navigatorKeys[_currentIndex].currentContext;
+      if (ctx != null) NavigationNotification(canHandlePop: canPop).dispatch(ctx);
+    }
+    if (index < 2) {
+      mainBox.put('tab', index);
+      triggerFavoritesChange();
+    }
+  }
+
+  Widget _buildOffstageNavigator(int index) {
+    if (_currentIndex != index && _navigators[index] == null) return Container();
+    return Offstage(
+      offstage: _currentIndex != index,
+      child: TickerMode(
+        enabled: _currentIndex == index,
+        child: _navigators[index] ??= Navigator(
+          key: _navigatorKeys[index],
+          observers: [HeroController()],
+          onGenerateRoute: (settings) {
+            return MaterialPageRoute(
+              builder: (_) => _tabs[index],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVisibilityNavigator(int index) {
+    return Visibility(
+      visible: _currentIndex == index,
+      child: _navigators[index] ??= Navigator(
+        key: _navigatorKeys[index],
+        observers: [HeroController()],
+        onGenerateRoute: (settings) {
+          return MaterialPageRoute(
+            builder: (_) => _tabs[index],
+          );
+        },
+      ),
+    );
   }
 
   void setTripLocation(Location location, {required bool isOrigin, bool switchPage = true}) {
@@ -127,9 +217,7 @@ class HomeState extends State<Home> {
 
     if (switchPage) {
       Navigator.of(context).popUntil((route) => route.isFirst);
-      setState(() {
-        _currentIndex = _tabs.indexOf(tripWidget);
-      });
+      _onTabTapped(_tabs.indexOf(tripWidget));
     }
 
     (isOrigin ? tripWidget.fromFieldController : tripWidget.toFieldController).setLocation(location);
@@ -164,9 +252,9 @@ class HomeState extends State<Home> {
               return DepartureBoardResultWidget(stop, null, options, direction: direction);
             });
 
-            if (_currentIndex >= 2) setState(() => _currentIndex = 1);
-
-            _openRoute(route);
+            var tabIndex = _tabs.indexWhere((tab) => tab is DepartureBoardWidget);
+            _onTabTapped(tabIndex);
+            _openRoute(route, _navigatorKeys[tabIndex].currentContext ?? context);
             break;
           case 'trip':
             Location? from = parseLocation(uri.queryParameters, 'origin');
@@ -179,9 +267,9 @@ class HomeState extends State<Home> {
               return TripResultWidget(from, to, null, false, options);
             });
 
-            if (_currentIndex >= 2) setState(() => _currentIndex = 0);
-
-            _openRoute(route);
+            var tabIndex = _tabs.indexWhere((tab) => tab is TripWidget);
+            _onTabTapped(tabIndex);
+            _openRoute(route, _navigatorKeys[tabIndex].currentContext ?? context);
             break;
         }
       } catch (e) {
@@ -190,15 +278,9 @@ class HomeState extends State<Home> {
     }
   }
 
-  void _openRoute(Route route) {
-    if (Navigator.canPop(context)) {
-      Navigator.popUntil(context, (route) => route is! ModalBottomSheetRoute);
-    }
-    if (Navigator.canPop(context)) {
-      Navigator.pushReplacement(context, route);
-    } else {
-      Navigator.push(context, route);
-    }
+  void _openRoute(Route route, BuildContext ctx) {
+    Navigator.popUntil(context, (route) => route.isFirst);
+    Navigator.push(ctx, route);
   }
 
   Future<void> _initDeepLinks() async {

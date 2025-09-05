@@ -233,7 +233,8 @@ class _TripResultWidgetState extends State<TripResultWidget> {
                                   })).then((_) => _streamController.add(_journeys));
                                 },
                                 onLongPress: () {
-                                  Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
+                                  Navigator.of(context, rootNavigator: true)
+                                      .push<MapWidget>(MaterialPageRoute(builder: (context) {
                                     return MapWidget([MapJourney(journeyDetailsReference: journey.detailsReference)]);
                                   }));
                                 },

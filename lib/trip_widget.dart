@@ -30,6 +30,7 @@ class TripWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(centerTitle: true, title: Text('Sök resa')),
       body: SafeArea(
         child: Column(
           children: [
@@ -220,8 +221,13 @@ class _FavoritePlacesListState extends State<FavoritePlacesList> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    onFavoriteChange.add(_update);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    onFavoriteChange = _update;
     var favoriteLocations = (widget.onlyStops
             ? allFavoriteLocations.whereType<StopLocation>().where((stop) => stop.isStopArea)
             : allFavoriteLocations)
@@ -240,6 +246,12 @@ class _FavoritePlacesListState extends State<FavoritePlacesList> {
       separatorBuilder: (context, index) => const Divider(height: 1),
       addEndingSeparator: true,
     );
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+    onFavoriteChange.remove(_update);
   }
 }
 

@@ -14,22 +14,32 @@ import 'network/traffic_situations.dart';
 import 'network/trafikverket.dart';
 import 'utils.dart';
 
-class JourneyDetailsWidget extends StatelessWidget {
+class JourneyDetailsWidget extends StatefulWidget {
   final DetailsRef detailsReference;
 
-  ServiceJourney get serviceJourney => detailsReference.serviceJourney;
+  const JourneyDetailsWidget(this.detailsReference, {super.key});
+
+  @override
+  State<JourneyDetailsWidget> createState() => _JourneyDetailsWidgetState();
+}
+
+class _JourneyDetailsWidgetState extends State<JourneyDetailsWidget> {
+  ServiceJourney get serviceJourney => widget.detailsReference.serviceJourney;
 
   ServiceJourneyDetails? _serviceJourneyDetails;
-
-  JourneyDetailsWidget(this.detailsReference, {super.key});
 
   final StreamController<ServiceJourneyDetailsWithTrafficSituations> _streamController = StreamController.broadcast();
 
   Future<void> _handleRefresh() async => _updateJourneyDetails();
 
   @override
-  Widget build(BuildContext context) {
+  void initState() {
+    super.initState();
     _updateJourneyDetails();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     var bgColor = Theme.of(context).primaryColor;
     return Scaffold(
         appBar: AppBar(
@@ -59,7 +69,7 @@ class JourneyDetailsWidget extends StatelessWidget {
                     return MapWidget([
                       _serviceJourneyDetails != null
                           ? MapJourney(serviceJourneyDetails: _serviceJourneyDetails)
-                          : MapJourney(journeyDetailsRef: detailsReference)
+                          : MapJourney(journeyDetailsRef: widget.detailsReference)
                     ]);
                   }));
                 },
@@ -105,7 +115,7 @@ class JourneyDetailsWidget extends StatelessWidget {
 
   Future<void> _updateJourneyDetails() async {
     try {
-      var response = await getJourneyDetails(detailsReference);
+      var response = await getJourneyDetails(widget.detailsReference);
       _serviceJourneyDetails = response.serviceJourneyDetails;
       _streamController.add(response);
     } catch (error, stackTrace) {

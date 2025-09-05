@@ -36,18 +36,24 @@ String _term(String prefix) {
       .replaceAll(',', ' ');
 }
 
-VoidCallback? onFavoriteChange;
+Set<VoidCallback> onFavoriteChange = {};
+
+void triggerFavoritesChange() {
+  for (var callback in onFavoriteChange) {
+    callback.call();
+  }
+}
 
 void addFavoriteLocation(Location location, {bool callOnChange = true}) {
   String term = _term(location.name);
   favoriteLocationsBox.put(term, location);
-  if (callOnChange) onFavoriteChange?.call();
+  if (callOnChange) triggerFavoritesChange();
 }
 
 void removeFavoriteLocation(Location location, {bool callOnChange = true}) {
   String term = _term(location.name);
   favoriteLocationsBox.delete(term);
-  if (callOnChange) onFavoriteChange?.call();
+  if (callOnChange) triggerFavoritesChange();
 }
 
 bool isLocationFavorite(Location location) {

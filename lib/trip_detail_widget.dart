@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -124,7 +125,8 @@ class TripDetailsWidget extends StatelessWidget {
                 builder: (context, snapshot) {
                   return IconButton(
                       onPressed: () {
-                        Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
+                        Navigator.of(context, rootNavigator: true)
+                            .push<MapWidget>(MaterialPageRoute(builder: (context) {
                           return MapWidget(snapshot.hasData
                               ? mapJourneys(snapshot.data!)
                               : [MapJourney(journeyDetailsReference: journey.detailsReference)]);
@@ -165,7 +167,12 @@ class TripDetailsWidget extends StatelessWidget {
                         ),
                         bottom: false,
                       ),
-                      SliverSafeArea(sliver: SliverToBoxAdapter(child: zoneWidget))
+                      SliverSafeArea(
+                        sliver: SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                          sliver: SliverToBoxAdapter(child: zoneWidget),
+                        ),
+                      )
                     ],
                   );
                 },
@@ -194,7 +201,7 @@ class TripDetailsWidget extends StatelessWidget {
   Widget _legCard(JourneyLeg leg, int i, BuildContext context, Color bgColor, JourneyLeg? before, JourneyLeg? after,
       JourneyDetails journeyDetails) {
     void openLinkOnMap() {
-      Navigator.push(context, MaterialPageRoute(builder: (context) {
+      Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (context) {
         var journeys = mapJourneys(journeyDetails);
         journeys[i].focus = true;
         return MapWidget(journeys);
@@ -208,14 +215,14 @@ class TripDetailsWidget extends StatelessWidget {
             Link() => openLinkOnMap(),
             TripLeg() => () {
                 var tripLegIndex = journeyDetails.tripLegs.indexWhere((l) => l.journeyLegIndex == leg.journeyLegIndex);
-                Navigator.push(context, MaterialPageRoute(builder: (context) {
+                Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (context) {
                   return JourneyDetailsWidget(TripLegDetailsRef(journey, leg.serviceJourney, tripLegIndex));
                 }));
               }(),
           },
           onLongPress: () => switch (leg) {
             Link() => openLinkOnMap(),
-            TripLeg() => Navigator.push(context, MaterialPageRoute(builder: (context) {
+            TripLeg() => Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (context) {
                 var journeys = mapJourneys(journeyDetails);
                 journeys[i].focus = true;
                 return MapWidget(journeys);
