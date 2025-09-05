@@ -770,9 +770,12 @@ Future<Location> getLocationFromCoord(LatLng position, {bool onlyStops = false, 
   Future<CoordLocation?>? addressReq;
   if (!onlyStops) addressReq = MGate.getLocationNearbyAddress(position);
 
-  var stop = (await stopReq).firstOrNull;
+  var stops = (await stopReq).toList(growable: false);
+  stops.sort((a, b) => distanceBetween(position, a.position).compareTo(distanceBetween(position, b.position)));
+
+  var stop = stops.firstOrNull;
   if (stop != null && !stop.isStopArea) {
-    stop = (await stopReq).firstWhereOrNull((s) => s.name == stop!.name && s.isStopArea) ?? stop
+    stop = stops.firstWhereOrNull((s) => s.name == stop!.name && s.isStopArea) ?? stop
       ..toStopArea();
   }
   if (stop != null) return stop;

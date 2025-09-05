@@ -129,6 +129,8 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
       _completer?.complete();
     }
   }
+
+  void scrollToTop() => _controller.scrollTo(0, 0);
 }
 
 void _launchURL(BuildContext context, String url) async {
@@ -162,7 +164,7 @@ html {
         background-color: var(--canvas-color);
     }
     
-    .bg-white {
+    .bg-white, .bg-sm-white {
         background-color: var(--canvas-color) !important;
     }
      

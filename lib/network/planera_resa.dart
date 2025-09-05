@@ -783,6 +783,8 @@ class Note implements TS {
 
   bool get booking => type == 'booking';
 
+  bool get guaranteedChange => type == 'guaranteed-change';
+
   Note(this.text, [this.severity = Severity.low]) {
     type = '';
   }

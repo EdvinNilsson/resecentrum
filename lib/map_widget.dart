@@ -361,9 +361,9 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     try {
       var response = await getJourneyDetails(DepartureDetailsRef.fromDeparture(departure));
       journeyDetails.element = response.serviceJourneyDetails;
-      streamController.add(response);
+      if (!streamController.isClosed) streamController.add(response);
     } catch (error) {
-      streamController.addError(error);
+      if (!streamController.isClosed) streamController.addError(error);
     }
   }
 
@@ -1165,7 +1165,7 @@ class Vehicle {
     t = 0;
 
     vehiclePosition = newPosition;
-    streamController.add(newPosition);
+    if (!streamController.isClosed) streamController.add(newPosition);
   }
 
   Vehicle(this.journeyId, this.nextJourneyId, bool outdated, this.vehiclePosition, this.transportMode, this.bgColor,

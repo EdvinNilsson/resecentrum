@@ -191,7 +191,7 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
                           return JourneyDetailsWidget(DepartureDetailsRef.fromDeparture(departure));
                         })).then((_) => _initTimer());
                       }, onLongPress: (context, departure) {
-                        Navigator.push<MapWidget>(context, MaterialPageRoute(builder: (context) {
+                        Navigator.of(context, rootNavigator: true)
                             .push<MapWidget>(MaterialPageRoute(builder: (context) {
                           _timer?.cancel();
                           return MapWidget([
@@ -246,7 +246,8 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
         if (location == null) throw NoLocationError();
         stopAreaGid = location.gid;
       } catch (e) {
-        return _departureStreamController.addError(e);
+        if (!_departureStreamController.isClosed) _departureStreamController.addError(e);
+        return;
       }
     } else {
       stopAreaGid = (widget._location as StopLocation).gid;
@@ -377,7 +378,7 @@ Future<void> getDepartureBoard(
       getDepartureBoard(streamController, stopAreaGid, dateTime, departureBoardOptions, direction, stopPosition, state,
               secondPass: true, ignoreError: ignoreError, tsSubject: tsSubject)
           .whenComplete(() => secondPassDone = true);
-      if (addOnlyOnce || result.isEmpty) return;
+      if (addOnlyOnce) return;
       lastPass = false;
     }
 
@@ -437,7 +438,7 @@ Future<void> getDepartureBoard(
       state.departureFrequency = 1.0 / avgPeriod;
     }
 
-    if (!secondPassDone) streamController.add(result);
+    if (!secondPassDone && !(result.isEmpty && !lastPass) && !streamController.isClosed) streamController.add(result);
 
     if (tsSubject != null) {
       if (!secondPass) state.ts = await ts;
@@ -462,7 +463,7 @@ Future<void> getDepartureBoard(
       print(stackTrace);
     }
     if (ignoreError) return;
-    streamController.addError(error);
+    if (!streamController.isClosed) streamController.addError(error);
   }
 }
 

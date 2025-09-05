@@ -230,7 +230,9 @@ class _TripResultWidgetState extends State<TripResultWidget> {
                                 onTap: () {
                                   Navigator.push(context, MaterialPageRoute(builder: (context) {
                                     return TripDetailsWidget(journeys.data!, i);
-                                  })).then((_) => _streamController.add(_journeys));
+                                  })).then((_) {
+                                    if (!_streamController.isClosed) _streamController.add(_journeys);
+                                  });
                                 },
                                 onLongPress: () {
                                   Navigator.of(context, rootNavigator: true)
@@ -386,13 +388,13 @@ class _TripResultWidgetState extends State<TripResultWidget> {
       var journeys = await _getJourneys(refresh: refresh);
       _journeys = journeys.results;
       _links = journeys.links;
-      _streamController.add(_journeys);
+      if (!_streamController.isClosed) _streamController.add(_journeys);
     } catch (error, stackTrace) {
       if (kDebugMode) {
         print(error);
         print(stackTrace);
       }
-      _streamController.addError(error);
+      if (!_streamController.isClosed) _streamController.addError(error);
     }
   }
 
@@ -402,7 +404,7 @@ class _TripResultWidgetState extends State<TripResultWidget> {
     if (moreJourneys == null || moreJourneys.results.isEmpty) return;
     _journeys?.addAll(moreJourneys.results);
     _links?.next = moreJourneys.links.next;
-    _streamController.add(_journeys);
+    if (!_streamController.isClosed) _streamController.add(_journeys);
   }
 
   Future<void> _addEarlierJourneys() async {
@@ -411,7 +413,7 @@ class _TripResultWidgetState extends State<TripResultWidget> {
     if (moreJourneys == null || moreJourneys.results.isEmpty) return;
     (_journeys ?? []).insertAll(0, moreJourneys.results);
     _links?.previous = moreJourneys.links.previous;
-    _streamController.add(_journeys);
+    if (!_streamController.isClosed) _streamController.add(_journeys);
   }
 
   Widget _legBar(Journey trip, Color bgColor, int maxTripTime, int tripTime, BuildContext context) {
@@ -443,11 +445,17 @@ class _TripResultWidgetState extends State<TripResultWidget> {
         Link() => _walk(before, leg, after, context),
       };
 
-      if (leg is TripLeg && _anyNoteLeg(leg)) {
-        var severity = leg.notes.followedBy(leg.origin.notes).followedBy(leg.destination.notes).map((note) => note.severity).max;
-        var line = leg.serviceJourney.line;
-
-        legWidget = addSeverityIcon(legWidget, severity, context, line, bgColor);
+      if (leg is TripLeg) {
+        if (leg.notes
+                .whereNot((note) => note.guaranteedChange)
+                .followedBy(leg.origin.notes)
+                .followedBy(leg.destination.notes)
+                .map((note) => note.severity)
+                .maxOrNull
+            case var severity?) {
+          var line = leg.serviceJourney.line;
+          legWidget = addSeverityIcon(legWidget, severity, context, line, bgColor);
+        }
       }
 
       children.add(Expanded(flex: flex, child: legWidget));

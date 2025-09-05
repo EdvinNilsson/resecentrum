@@ -138,7 +138,7 @@ class LocationSearcherWidget extends StatelessWidget {
     }
     if (result.isEmpty && _lastSuggestions?.suggestions.isEmpty == true) return;
     _lastSuggestions = Suggestions(result.toSet(), _lastSuggestions?._online);
-    _streamController.add(_lastSuggestions);
+    if (!_streamController.isClosed) _streamController.add(_lastSuggestions);
   }
 
   Future<void> _getSuggestions(String input) async {
@@ -147,12 +147,12 @@ class LocationSearcherWidget extends StatelessWidget {
       response = await PlaneraResa.locationsByText(input, types: _onlyStops ? {LocationType.stoparea} : null);
     } catch (error) {
       if (_lastSuggestions?._offline.isEmpty ?? true) {
-        _streamController.addError(error);
+        if (!_streamController.isClosed) _streamController.addError(error);
         return;
       }
     }
     _lastSuggestions = Suggestions(_lastSuggestions?._offline ?? {}, response?.toSet());
-    _streamController.add(_lastSuggestions);
+    if (!_streamController.isClosed) _streamController.add(_lastSuggestions);
   }
 
   Future<bool> _getNearbyStops() async {
@@ -175,14 +175,16 @@ class LocationSearcherWidget extends StatelessWidget {
     try {
       response = await PlaneraResa.nearbyStops(currentLocation.position, limit: 20, radiusInMeters: 3000);
     } catch (error) {
-      _streamController.addError(error);
+      if (!_streamController.isClosed) _streamController.addError(error);
       return false;
     }
 
-    var stops = response.where((s) => s.isStopArea);
+    var stops = response.where((s) => s.isStopArea).toList(growable: false);
+    stops.sort((a, b) => distanceBetween(currentLocation.position, a.position)
+        .compareTo(distanceBetween(currentLocation.position, b.position)));
 
     _lastSuggestions = Suggestions(location is CoordLocation ? {location} : {}, stops.toSet(), showDistance: true);
-    _streamController.add(_lastSuggestions);
+    if (!_streamController.isClosed) _streamController.add(_lastSuggestions);
 
     return true;
   }

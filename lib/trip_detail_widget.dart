@@ -42,13 +42,13 @@ class TripDetailsWidget extends StatelessWidget {
                   (journey = await PlaneraResa.reconstructJourney(journey.reconstructionReference)).detailsReference,
                   journeyDetailsIncludes);
 
-      _streamController.add(journeyDetails);
+      if (!_streamController.isClosed) _streamController.add(journeyDetails);
     } catch (error, stackTrace) {
       if (kDebugMode) {
         print(error);
         print(stackTrace);
       }
-      _streamController.addError(error);
+      if (!_streamController.isClosed) _streamController.addError(error);
     }
   }
 
@@ -79,7 +79,7 @@ class TripDetailsWidget extends StatelessWidget {
 
       if (leg is TripLeg && before is TripLeg) {
         void openMap() {
-          Navigator.push(context, MaterialPageRoute(builder: (context) {
+          Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (context) {
             return MapWidget(mapJourneys(journeyDetails), focusStopPoints: [leg.origin.stopPoint.gid]);
           }));
         }
@@ -241,6 +241,7 @@ class TripDetailsWidget extends StatelessWidget {
     var tripLegDetails = journeyDetails.tripLegs.firstWhere((l) => l.journeyLegIndex == leg.journeyLegIndex);
 
     var line = leg.serviceJourney.line;
+    var notes = leg.notes.whereNot((note) => note.guaranteedChange);
 
     return Column(children: [
       Row(
@@ -255,8 +256,8 @@ class TripDetailsWidget extends StatelessWidget {
               margin: const EdgeInsets.only(left: 8)),
         ],
       ),
-      displayTSs(leg.notes),
-      leg.notes.isEmpty ? const SizedBox(height: 16) : const Divider(),
+      displayTSs(notes),
+      notes.isEmpty ? const SizedBox(height: 16) : const Divider(),
       _stopHeader(leg, tripLegDetails.origin, true),
       displayTSs(leg.origin.notes),
       const Divider(),
@@ -360,6 +361,13 @@ class TripDetailsWidget extends StatelessWidget {
               const Divider(),
               displayTSs(link.notes, padding: const EdgeInsets.only(left: 5)),
             ],
+          ),
+        if (before != null && before.notes.any((note) => note.guaranteedChange))
+          Column(
+            children: [
+              const Divider(),
+              displayTSs(before.notes.where((note) => note.guaranteedChange), padding: const EdgeInsets.only(left: 5)),
+            ],
           )
       ],
     );
@@ -385,7 +393,7 @@ class TripDetailsWidget extends StatelessWidget {
     await setTripLegTrainInfo([journey]);
     var journeyDetails =
         await journeyDetailsReq ?? await PlaneraResa.journeyDetails(journey.detailsReference, journeyDetailsIncludes);
-    _streamController.add(journeyDetails);
+    if (!_streamController.isClosed) _streamController.add(journeyDetails);
   }
 }
 
@@ -405,7 +413,7 @@ ConnectionValidation getConnectionValidation(JourneyLeg? before, Link? link, Jou
 
   var walkSpeed = getWalkSpeed(link?.distanceInMeters, duration);
 
-  var guaranteedChange = link?.notes.any((note) => note.type == 'guaranteed-change') ?? false;
+  var guaranteedChange = (link?.notes ?? before?.notes)?.any((note) => note.guaranteedChange) ?? false;
 
   if (duration < Duration.zero || walkSpeed != null && walkSpeed > 10) return ConnectionValidation.highRisk;
 

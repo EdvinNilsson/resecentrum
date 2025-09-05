@@ -117,13 +117,13 @@ class _JourneyDetailsWidgetState extends State<JourneyDetailsWidget> {
     try {
       var response = await getJourneyDetails(widget.detailsReference);
       _serviceJourneyDetails = response.serviceJourneyDetails;
-      _streamController.add(response);
+      if (!_streamController.isClosed) _streamController.add(response);
     } catch (error, stackTrace) {
       if (kDebugMode) {
         print(error);
         print(stackTrace);
       }
-      _streamController.addError(error);
+      if (!_streamController.isClosed) _streamController.addError(error);
     }
   }
 }
