@@ -191,6 +191,8 @@ Future<ServiceJourneyDetailsWithTrafficSituations> getJourneyDetails(DetailsRef 
   if (serviceJourney.isTrain) {
     List<Set<String>?> stopNotesLowPriority = List.filled(allStops.length, null, growable: false);
     List<Set<String>?> stopNotesNormalPriority = List.filled(allStops.length, null, growable: false);
+    Map<String, int> locationSignatureToStopIdx = {};
+
     var trainJourney = await Trafikverket.getTrainJourney(
         serviceJourney.line.trainNumber!, allStops.first.plannedDepartureTime!, allStops.last.plannedArrivalTime!);
     if (trainJourney == null) {
@@ -198,7 +200,7 @@ Future<ServiceJourneyDetailsWithTrafficSituations> getJourneyDetails(DetailsRef 
     } else {
       List<JourneyPartNote> journeyPartNotes = [];
 
-      setTrainInfo(trainJourney, allStops, stopNotesLowPriority, stopNotesNormalPriority);
+      setTrainInfo(trainJourney, allStops, stopNotesLowPriority, stopNotesNormalPriority, locationSignatureToStopIdx);
 
       for (int stop = 0; stop < allStops.length; stop++) {
         for (String description in stopNotesNormalPriority[stop] ?? {}) {
@@ -280,12 +282,25 @@ Future<ServiceJourneyDetailsWithTrafficSituations> getJourneyDetails(DetailsRef 
           ..addAll(trainJourney.map((t) => t.service).expand((d) => d.map((text) => Note(text))))
           ..addAll(trainJourney.map((t) => t.trainComposition).expand((d) => d.map((text) => Note(text))));
 
-        notes.addAll((await Trafikverket.getTrainMessage(
-                trainJourney.map((t) => t.locationSignature).toSet(),
-                trainJourney.where((t) => t.deviation.contains('Se info!')).map((t) => t.locationSignature).toSet(),
-                allStops.first.time,
-                allStops.last.time)) ??
-            <TrainMessage>[]);
+        var trainMessages = await Trafikverket.getTrainMessage(
+            trainJourney.map((t) => t.locationSignature).toSet(),
+            trainJourney.where((t) => t.deviation.contains('Se info!')).map((t) => t.locationSignature).toSet(),
+            allStops.first.time,
+            allStops.last.time);
+
+        if (trainMessages != null) {
+          trainMessages = trainMessages.where((msg) => msg is TrafficImpact
+              ? msg.severities.keys.toSet().intersection(locationSignatureToStopIdx.keys.toSet()).length > 1
+              : true);
+          notes.addAll(trainMessages);
+
+          for (var msg in trainMessages.whereType<TrafficImpact>()) {
+            msg.severities.forEach((sig, severity) {
+              var idx = locationSignatureToStopIdx[sig];
+              if (idx != null) stopNoteIcons[idx] = maxOrNull(stopNoteIcons[idx], severity);
+            });
+          }
+        }
 
         normalTs = normalTs.followedBy(notes);
       }

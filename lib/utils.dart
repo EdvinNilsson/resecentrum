@@ -856,7 +856,7 @@ TextSpan highlightFirstPartSpan(String text, TextStyle? style, BuildContext cont
 }
 
 void setTrainInfo(Iterable<TrainAnnouncement> trainJourney, List<Call> stops, List<Set<String>?>? stopNotesLowPriority,
-    List<Set<String>?>? stopNotesNormalPriority) {
+    List<Set<String>?>? stopNotesNormalPriority, Map<String, int>? locationSignatureToStopIdx) {
   for (int i = 0, stop = 0; i < trainJourney.length && stop < stops.length; i++) {
     var activity = trainJourney.elementAt(i);
     var next = trainJourney.tryElementAt(i + 1);
@@ -876,6 +876,7 @@ void setTrainInfo(Iterable<TrainAnnouncement> trainJourney, List<Call> stops, Li
       if (activity.deviation.contains('Spårändrat')) stops[stop].estimatedPlatform = activity.trackAtLocation;
       stops[stop].isArrivalCancelled = activity.canceled;
       setDepartureState(activity, stops[stop].arrState);
+      locationSignatureToStopIdx?[activity.locationSignature] = stop;
     } else {
       if (!(stops[stop].plannedDepartureTime?.isAtSameMomentAs(activity.advertisedTimeAtLocation) ?? false)) {
         if (stops[stop].plannedDepartureTime?.isBefore(activity.advertisedTimeAtLocation) ?? false) {
@@ -892,6 +893,7 @@ void setTrainInfo(Iterable<TrainAnnouncement> trainJourney, List<Call> stops, Li
       if (activity.deviation.contains('Spårändrat')) stops[stop].estimatedPlatform = activity.trackAtLocation;
       stops[stop].isDepartureCancelled = activity.canceled;
       setDepartureState(activity, stops[stop].depState);
+      locationSignatureToStopIdx?[activity.locationSignature] = stop;
 
       if (stops[stop].arrState.state == DepartureState.normal && stops[stop].depState.state != DepartureState.normal) {
         stops[stop].arrState.state = stops[stop].depState.state;
@@ -994,7 +996,7 @@ Future<ServiceJourneyDetails?> getJourneyDetailExtra(DetailsRef ref) async {
         .then((trainJourney) {
       if (trainJourney == null) return;
       var allStops = journeyDetails.allCalls.toList(growable: false);
-      setTrainInfo(trainJourney, allStops, null, null);
+      setTrainInfo(trainJourney, allStops, null, null, null);
     });
   }
 

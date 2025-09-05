@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:collection/collection.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
+import '../extensions.dart';
 import '../utils.dart';
 import 'planera_resa.dart';
 import 'vehicle_positions.dart';
@@ -159,9 +161,9 @@ class Trafikverket {
 
   static Future<String?> getTrainStationFromLocation(LatLng position) async {
     return await _callApi('''
-<QUERY objecttype="TrainStation" namespace="rail.infrastructure" schemaversion="1.5">
+<QUERY objecttype="TrainStation" namespace="rail.infrastructure" schemaversion="1.5" limit="1">
     <FILTER>
-        <WITHIN name="Geometry.WGS84" shape="center" value="${position.longitude} ${position.latitude}" radius="500m" />
+        <NEAR name="Geometry.WGS84" value="${position.longitude} ${position.latitude}" maxdistance="1000m" />
         <EQ name="Advertised" value="true" />
     </FILTER>
     <INCLUDE>LocationSignature</INCLUDE>
@@ -171,9 +173,13 @@ class Trafikverket {
     });
   }
 
-  static Future<Iterable<TrainMessage>?> getTrainStationMessage(
+  static Future<Iterable<TS>?> getTrainStationMessage(
       String locationSignature, DateTime? start, DateTime end, String? direction) async {
-    return await _callApi('''
+    bool useOldSystem = DateTime.now().isBefore(DateTime(2025, 9, 9, 10, 00));
+    Future<Iterable<TrainMessage>?>? trainMessages;
+
+    if (useOldSystem) {
+      trainMessages = _callApi<Iterable<TrainMessage>?>('''
 <QUERY objecttype="TrainMessage" schemaversion="1.7" orderby="LastUpdateDateTime desc">
     <FILTER>
         <AND>
@@ -193,14 +199,47 @@ class Trafikverket {
     <INCLUDE>ExternalDescription</INCLUDE>
 </QUERY>
 ''', (result) {
-      return result.data['RESPONSE']['RESULT'].first['TrainMessage'].map<TrainMessage>((t) => TrainMessage(t));
-    });
+        return result.data['RESPONSE']['RESULT'].first['TrainMessage'].map<TrainMessage>((t) => TrainMessage(t));
+      }).suppress();
+    }
+
+    var trafficImpacts = await _callApi<Iterable<TrafficImpact>?>('''
+<QUERY objecttype="OperativeEvent" namespace="ols.open" schemaversion="1" orderby="TrafficImpact.PublicMessage.ModifiedDateTime desc">
+    <FILTER>
+        <ELEMENTMATCH>
+            <EQ name="TrafficImpact.SelectedSection.SectionLocation.Signature" value="$locationSignature" />
+            <EQ name="TrafficImpact.SelectedSection.SectionLocation.Affected" value="true" />
+        </ELEMENTMATCH>
+        <LTE name="TrafficImpact.PublicMessage.StartDateTime" value="${end.toIso8601String()}" />
+        <GTE name="TrafficImpact.PublicMessage.EndDateTime" value="${start?.toIso8601String() ?? '\$now'}" />
+        ${direction != null ? '<EQ name="TrafficImpact.SelectedSection.SectionLocation.Signature" value="$direction" />' : ''}
+        <EQ name="Deleted" value="false" />
+        <EXISTS name="TrafficImpact.PublicMessage" value="true" />
+    </FILTER>
+    <INCLUDE>TrafficImpact.PublicMessage.Header</INCLUDE>
+    <INCLUDE>TrafficImpact.PublicMessage.Description</INCLUDE>
+    <INCLUDE>TrafficImpact.SelectedSection.OperatingLevel</INCLUDE>
+    <INCLUDE>TrafficImpact.SelectedSection.SectionLocation.Signature</INCLUDE>
+</QUERY>
+''', (result) {
+      return result.data['RESPONSE']['RESULT'][0]['OperativeEvent'].expand<TrafficImpact>((event) =>
+          (event['TrafficImpact'] as Iterable<dynamic>).map((t) => TrafficImpact.fromStation(t, locationSignature)));
+    }).suppress();
+
+    return trafficImpacts
+        ?.cast<TS>()
+        .followedBy((await (trainMessages ?? Future.value(null)).suppress()) ?? Iterable.empty());
   }
 
-  static Future<Iterable<TrainMessage>?> getTrainMessage(Iterable<String> locationSignatures,
+  static Future<Iterable<TS>?> getTrainMessage(Iterable<String> locationSignatures,
       Iterable<String> infoLocationSignatures, DateTime start, DateTime end) async {
     var now = DateTime.now().isBefore(end);
-    return await _callApi('''
+
+    bool useOldSystem = DateTime.now().isBefore(DateTime(2025, 9, 9, 10, 00));
+    Future<Iterable<TrainMessage>?>? trainMessages;
+
+    if (useOldSystem) {
+      trainMessages = _callApi<Iterable<TrainMessage>?>('''
 <QUERY objecttype="TrainMessage" schemaversion="1.7" orderby="LastUpdateDateTime desc">
     <FILTER>
         <AND>
@@ -223,8 +262,40 @@ class Trafikverket {
     <INCLUDE>ExternalDescription</INCLUDE>
 </QUERY>
 ''', (result) {
-      return result.data['RESPONSE']['RESULT'].first['TrainMessage'].map<TrainMessage>((t) => TrainMessage(t));
-    });
+        return result.data['RESPONSE']['RESULT'].first['TrainMessage'].map<TrainMessage>((t) => TrainMessage(t));
+      }).suppress();
+    }
+
+    var trafficImpacts = await _callApi<Iterable<TrafficImpact>?>('''
+<QUERY objecttype="OperativeEvent" namespace="ols.open" schemaversion="1" orderby="TrafficImpact.PublicMessage.ModifiedDateTime desc">
+    <FILTER>
+        <OR>
+            ${locationSignatures.map((l) => '''
+            <ELEMENTMATCH>
+                <EQ name="TrafficImpact.SelectedSection.SectionLocation.Signature" value="$l" />
+                <EQ name="TrafficImpact.SelectedSection.SectionLocation.Affected" value="true" />
+            </ELEMENTMATCH>
+            ''').join()}
+        </OR>
+        <LTE name="TrafficImpact.PublicMessage.StartDateTime" value="${end.toIso8601String()}" />
+        <GTE name="TrafficImpact.PublicMessage.EndDateTime" value="${start.toIso8601String()}" />
+        <EQ name="Deleted" value="false" />
+        <EXISTS name="TrafficImpact.PublicMessage" value="true" />
+    </FILTER>
+    <INCLUDE>TrafficImpact.PublicMessage.Header</INCLUDE>
+    <INCLUDE>TrafficImpact.PublicMessage.Description</INCLUDE>
+    <INCLUDE>TrafficImpact.SelectedSection.OperatingLevel</INCLUDE>
+    <INCLUDE>TrafficImpact.SelectedSection.SectionLocation.Signature</INCLUDE>
+    <INCLUDE>TrafficImpact.SelectedSection.SectionLocation.Affected</INCLUDE>
+</QUERY>
+''', (result) {
+      return result.data['RESPONSE']['RESULT'][0]['OperativeEvent'].expand<TrafficImpact>(
+          (event) => (event['TrafficImpact'] as Iterable<dynamic>).map((t) => TrafficImpact.fromTrain(t)));
+    }).suppress();
+
+    return trafficImpacts
+        ?.cast<TS>()
+        .followedBy((await (trainMessages ?? Future.value(null)).suppress()) ?? Iterable.empty());
   }
 
   static Future<Iterable<TrainAnnouncement>?> getLateTrains(String locationSignature, DateTime? dateTime) async {
@@ -415,6 +486,80 @@ class TrainMessage implements TS {
                         : '${header!.trim()}${externalDescription.contains(': ') || header!.contains(':') ? '' : ':'} '
                             '$externalDescription',
                     style: TextStyle(color: Theme.of(context).hintColor))),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class TrafficImpact implements TS {
+  late String? header;
+  late String description;
+  Severity severity = Severity.normal;
+  Map<String, Severity> severities = {};
+
+  TrafficImpact.fromStation(dynamic data, String locationSignature) {
+    _setPublicMessage(data);
+
+    var operatingLevel = (data['SelectedSection'] as List).firstWhereOrNull((sec) =>
+        (sec['SectionLocation'] as List).any((loc) => loc['Signature'] == locationSignature))?['OperatingLevel'];
+    if (operatingLevel != null) severity = _getSeverity(operatingLevel);
+  }
+
+  TrafficImpact.fromTrain(dynamic data) {
+    _setPublicMessage(data);
+    var sections = data['SelectedSection'];
+    for (var section in sections) {
+      var operatingLevel = section['OperatingLevel'];
+      for (var location in section['SectionLocation']) {
+        var affected = location['Affected'];
+        if (!affected) continue;
+        var signature = location['Signature'];
+        severities[signature] = _getSeverity(operatingLevel);
+      }
+    }
+    severity = severities.values.max;
+  }
+
+  void _setPublicMessage(dynamic data) {
+    var publicMessage = data['PublicMessage'];
+    header = publicMessage['Header'];
+    description = publicMessage['Description'];
+  }
+
+  Severity _getSeverity(int operatingLevel) => switch (operatingLevel) {
+        1 => Severity.low,
+        4 => Severity.high,
+        _ => Severity.normal,
+      };
+
+  @override
+  Widget display(BuildContext context, {bool boldTitle = false, bool showAffectedStop = false}) {
+    var splitIdx = this.description.indexOf(RegExp(r':\s'));
+    var header =
+        [this.header?.trim(), if (splitIdx != -1) this.description.substring(0, splitIdx).trim()].nonNulls.join(' ');
+    var description = this.description.substring(splitIdx + 1).trim();
+
+    return Padding(
+      padding: const EdgeInsets.all(5),
+      child: Row(
+        children: [
+          getNoteIcon(severity),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              children: [
+                Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(header, style: boldTitle ? const TextStyle(fontWeight: FontWeight.bold) : null)),
+                const SizedBox(height: 5),
+                Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(description,
+                        style: TextStyle(color: Theme.of(context).hintColor), textAlign: TextAlign.left)),
+              ],
+            ),
           ),
         ],
       ),
