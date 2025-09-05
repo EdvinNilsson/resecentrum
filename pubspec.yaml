@@ -32,6 +32,7 @@ dependencies:
   url_launcher: ^6.1.6
   uuid: ^4.1.0
   webview_flutter: ^4.0.7
+  webview_refresher: ^0.1.0
 
 dev_dependencies:
   build_runner: ^2.4.4

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 
 import 'package:dio/dio.dart';
@@ -5,9 +6,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_custom_tabs/flutter_custom_tabs_lite.dart';
 import 'package:html/parser.dart';
-import 'package:resecentrum/extensions.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_refresher/webview_refresher.dart';
 
+import 'extensions.dart';
 import 'main.dart';
 import 'utils.dart';
 
@@ -25,6 +27,7 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
   Object? _error;
 
   late final WebViewController _controller;
+  Completer<void>? _completer;
 
   @override
   void initState() {
@@ -34,9 +37,11 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
       ..enableZoom(false)
       ..setNavigationDelegate(
         NavigationDelegate(onPageFinished: (s) {
+          _finishRefresh();
           if (!mounted) return;
           setState(() => _isLoading = false);
         }, onWebResourceError: (e) {
+          _finishRefresh();
           if (!mounted) return;
           if (kDebugMode) print(e);
           setState(() => _error = e);
@@ -56,7 +61,7 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
     _controller.setBackgroundColor(Theme.of(context).canvasColor);
     return Stack(
       children: [
-        SafeArea(child: WebViewWidget(controller: _controller)),
+        SafeArea(child: WebviewRefresher(controller: _controller, onRefresh: _onRefresh)),
         if (_isLoading) loadingPage(),
         if (_error != null)
           Container(
@@ -72,7 +77,7 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
     );
   }
 
-  void _load() async {
+  Future<void> _load() async {
     try {
       var res = await Dio().get(url);
 
@@ -105,6 +110,23 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
       setState(() => _isLoading = false);
     } on DioException catch (error) {
       setState(() => _error = error);
+    }
+  }
+
+  Future<void> _onRefresh() async {
+    _completer = Completer<void>();
+    if (await _controller.currentUrl() == null) {
+      await _load();
+    } else {
+      await _controller.reload();
+    }
+    await _completer!.future;
+  }
+
+  void _finishRefresh() {
+    if (_completer == null) return;
+    if (!_completer!.isCompleted) {
+      _completer?.complete();
     }
   }
 }
