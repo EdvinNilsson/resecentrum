@@ -143,7 +143,19 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
                 builder: (context, departureBoard) {
                   if (departureBoard.connectionState == ConnectionState.waiting) return loadingPage();
                   if (!departureBoard.hasData) return ErrorPage(_updateDepartureBoard, error: departureBoard.error);
-                  if (departureBoard.data!.isEmpty) return noDataPage('Inga avgångar hittades');
+                  if (departureBoard.data!.isEmpty) {
+                    return SafeArea(
+                      child: Column(
+                        children: [
+                          Expanded(child: noDataPage('Inga avgångar hittades')),
+                          StreamBuilder(
+                              stream: _trafficSituationSubject.stream,
+                              builder: (context, snapshot) =>
+                                  snapshot.data != null ? displayTSs(snapshot.data!) : Container())
+                        ],
+                      ),
+                    );
+                  }
                   var bgColor = Theme.of(context).cardColor;
                   return CustomScrollView(slivers: [
                     if (_dateTime != null && departureBoard.data!.isNotEmpty) dateBar(_dateTime!),
