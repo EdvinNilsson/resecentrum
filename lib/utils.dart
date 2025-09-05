@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:collection/collection.dart';
@@ -6,7 +7,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' hide binarySearch;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:geolocator_platform_interface/geolocator_platform_interface.dart';
 import 'package:intl/intl.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' hide Line;
 import 'package:url_launcher/url_launcher.dart';
@@ -712,19 +713,41 @@ LatLngBounds? minBounds(LatLngBounds? a, b) {
           LatLng(min(a.northeast.latitude, b.northeast.latitude), min(a.northeast.longitude, b.northeast.longitude)));
 }
 
-double distanceBetween(LatLng a, LatLng b) =>
-    Geolocator.distanceBetween(a.latitude, a.longitude, b.latitude, b.longitude);
+// Calculate distance using Haversine formula
+double distanceBetween(LatLng a, LatLng b) {
+  const deg2rad = pi / 180;
+  const earthRadius = 6362893; // Earth radius in meters near Gothenburg
 
-Future<Position> getPosition() async {
-  bool serviceEnabled;
-  LocationPermission permission;
+  double hav(x) => (1 - cos(x)) / 2;
+  double ahav(y) => acos(1 - 2 * y);
 
-  serviceEnabled = await Geolocator.isLocationServiceEnabled();
+  var angle = ahav(hav(deg2rad * (b.latitude - a.latitude)) +
+      cos(deg2rad * a.latitude) * cos(deg2rad * b.latitude) * hav(deg2rad * (b.longitude - a.longitude)));
+  return earthRadius * angle;
+}
+
+Future<LatLng> getPosition(bool requestPermissions) async {
+  if (Platform.isAndroid) {
+    try {
+      var coords = await platform.invokeListMethod<double>('location', {'requestPermissions': requestPermissions});
+      if (coords == null) return Future.error(NoLocationError());
+      return LatLng(coords[0], coords[1]);
+    } on PlatformException catch (e) {
+      if (e.code == 'LOCATION') {
+        return Future.error(NoLocationError(e.message));
+      }
+      rethrow;
+    }
+  }
+
+  var geolocator = GeolocatorPlatform.instance;
+
+  bool serviceEnabled = await geolocator.isLocationServiceEnabled();
   if (!serviceEnabled) return Future.error(NoLocationError('Platstjänst är avaktiverat'));
 
-  permission = await Geolocator.checkPermission();
-  if (permission == LocationPermission.denied) {
-    permission = await Geolocator.requestPermission();
+  var permission = await geolocator.checkPermission();
+  if (permission == LocationPermission.denied && requestPermissions) {
+    permission = await geolocator.requestPermission();
   }
 
   if (permission == LocationPermission.deniedForever || permission == LocationPermission.denied) {
@@ -732,7 +755,8 @@ Future<Position> getPosition() async {
   }
 
   try {
-    return await Geolocator.getCurrentPosition();
+    var pos = await geolocator.getCurrentPosition();
+    return LatLng(pos.latitude, pos.longitude);
   } catch (e) {
     return Future.error(NoLocationError());
   }

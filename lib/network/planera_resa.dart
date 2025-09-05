@@ -1371,7 +1371,8 @@ class CurrentLocation extends Location {
     return '${super.name}, ${location?.name.firstPart() ?? (tried && location == null ? 'okänd' : 'söker...')}';
   }
 
-  Future<Location?> location({bool forceRefresh = false, bool onlyStops = false}) async {
+  Future<Location?> location(
+      {bool forceRefresh = false, bool onlyStops = false, bool requestPermissions = true}) async {
     if (!forceRefresh &&
         _location != null &&
         tried &&
@@ -1381,12 +1382,10 @@ class CurrentLocation extends Location {
     }
 
     try {
-      var pos = await getPosition();
-
+      var pos = await getPosition(requestPermissions);
       _lat = pos.latitude;
       _lon = pos.longitude;
-      _location = await getLocationFromCoord(LatLng(pos.latitude, pos.longitude),
-          stopMaxDist: onlyStops ? 3000 : 100, onlyStops: onlyStops);
+      _location = await getLocationFromCoord(pos, stopMaxDist: onlyStops ? 3000 : 100, onlyStops: onlyStops);
     } catch (e) {
       _location = null;
       return Future.error(e);

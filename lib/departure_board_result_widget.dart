@@ -204,8 +204,8 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
     String stopAreaGid;
     if (widget._location is CurrentLocation) {
       try {
-        StopLocation? location =
-            await (widget._location as CurrentLocation).location(onlyStops: true, forceRefresh: true) as StopLocation?;
+        StopLocation? location = await (widget._location as CurrentLocation)
+            .location(onlyStops: true, forceRefresh: true, requestPermissions: !ignoreError) as StopLocation?;
         if (location == null) throw NoLocationError();
         stopAreaGid = location.gid;
       } catch (e) {
