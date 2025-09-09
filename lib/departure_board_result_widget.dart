@@ -498,7 +498,7 @@ Future<void> _addTrainInfo(List<Departure> result, DepartureBoardOptions departu
 
   var lateTrains = await lateTrainsRequest;
 
-  notes.addAll((await trainStationMessages ?? <TS>[]));
+  notes.addAll((await trainStationMessages ?? <TrafficImpact>[]));
 
   if (lateTrains != null && lateTrains.isNotEmpty) {
     var lateDepartures = lateTrains.where((t) => t.activityType == 'Avgang');

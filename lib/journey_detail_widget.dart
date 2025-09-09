@@ -293,15 +293,11 @@ Future<ServiceJourneyDetailsWithTrafficSituations> getJourneyDetails(DetailsRef 
           ..addAll(trainJourney.map((t) => t.trainComposition).expand((d) => d.map((text) => Note(text))));
 
         var trainMessages = await Trafikverket.getTrainMessage(
-            trainJourney.map((t) => t.locationSignature).toSet(),
-            trainJourney.where((t) => t.deviation.contains('Se info!')).map((t) => t.locationSignature).toSet(),
-            allStops.first.time,
-            allStops.last.time);
+            trainJourney.map((t) => t.locationSignature).toSet(), allStops.first.time, allStops.last.time);
 
         if (trainMessages != null) {
-          trainMessages = trainMessages.where((msg) => msg is TrafficImpact
-              ? msg.severities.keys.toSet().intersection(locationSignatureToStopIdx.keys.toSet()).length > 1
-              : true);
+          trainMessages = trainMessages.where(
+              (msg) => msg.severities.keys.toSet().intersection(locationSignatureToStopIdx.keys.toSet()).length > 1);
           notes.addAll(trainMessages);
 
           for (var msg in trainMessages.whereType<TrafficImpact>()) {

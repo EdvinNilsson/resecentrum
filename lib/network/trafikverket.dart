@@ -7,7 +7,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
-import '../extensions.dart';
 import '../utils.dart';
 import 'planera_resa.dart';
 import 'vehicle_positions.dart';
@@ -173,37 +172,9 @@ class Trafikverket {
     });
   }
 
-  static Future<Iterable<TS>?> getTrainStationMessage(
+  static Future<Iterable<TrafficImpact>?> getTrainStationMessage(
       String locationSignature, DateTime? start, DateTime end, String? direction) async {
-    bool useOldSystem = DateTime.now().isBefore(DateTime(2025, 9, 9, 10, 00));
-    Future<Iterable<TrainMessage>?>? trainMessages;
-
-    if (useOldSystem) {
-      trainMessages = _callApi<Iterable<TrainMessage>?>('''
-<QUERY objecttype="TrainMessage" schemaversion="1.7" orderby="LastUpdateDateTime desc">
-    <FILTER>
-        <AND>
-            <OR>
-                <EQ name="TrafficImpact.AffectedLocation.LocationSignature" value="$locationSignature" />
-                <EQ name='TrafficImpact.FromLocation' value='$locationSignature'/>
-                <EQ name='TrafficImpact.ToLocation' value='$locationSignature'/>
-            </OR>
-            <EQ name="Deleted" value="false" />
-            <EQ name="TrafficImpact.AffectedLocation.ShouldBeTrafficInformed" value="true" />
-            <LTE name="StartDateTime" value="${end.toIso8601String()}" />
-            ${start != null ? '<GTE name="PrognosticatedEndDateTimeTrafficImpact" value="${start.toIso8601String()}" />' : ''}
-            ${direction != null ? '<EQ name="TrafficImpact.AffectedLocation.LocationSignature" value="$direction" />' : ''}
-        </AND>
-    </FILTER>
-    <INCLUDE>Header</INCLUDE>
-    <INCLUDE>ExternalDescription</INCLUDE>
-</QUERY>
-''', (result) {
-        return result.data['RESPONSE']['RESULT'].first['TrainMessage'].map<TrainMessage>((t) => TrainMessage(t));
-      }).suppress();
-    }
-
-    var trafficImpacts = await _callApi<Iterable<TrafficImpact>?>('''
+    return await _callApi<Iterable<TrafficImpact>?>('''
 <QUERY objecttype="OperativeEvent" namespace="ols.open" schemaversion="1" orderby="TrafficImpact.PublicMessage.ModifiedDateTime desc">
     <FILTER>
         <ELEMENTMATCH>
@@ -224,49 +195,12 @@ class Trafikverket {
 ''', (result) {
       return result.data['RESPONSE']['RESULT'][0]['OperativeEvent'].expand<TrafficImpact>((event) =>
           (event['TrafficImpact'] as Iterable<dynamic>).map((t) => TrafficImpact.fromStation(t, locationSignature)));
-    }).suppress();
-
-    return trafficImpacts
-        ?.cast<TS>()
-        .followedBy((await (trainMessages ?? Future.value(null)).suppress()) ?? Iterable.empty());
+    });
   }
 
-  static Future<Iterable<TS>?> getTrainMessage(Iterable<String> locationSignatures,
-      Iterable<String> infoLocationSignatures, DateTime start, DateTime end) async {
-    var now = DateTime.now().isBefore(end);
-
-    bool useOldSystem = DateTime.now().isBefore(DateTime(2025, 9, 9, 10, 00));
-    Future<Iterable<TrainMessage>?>? trainMessages;
-
-    if (useOldSystem) {
-      trainMessages = _callApi<Iterable<TrainMessage>?>('''
-<QUERY objecttype="TrainMessage" schemaversion="1.7" orderby="LastUpdateDateTime desc">
-    <FILTER>
-        <AND>
-            <OR>
-                <AND>
-                    ${locationSignatures.map((l) => '''<IN name="TrafficImpact.AffectedLocation.LocationSignature" value="$l" />
-                    ''').join()}
-                </AND>
-                ${infoLocationSignatures.isNotEmpty ? """<AND>
-                    ${infoLocationSignatures.map((l) => '''<IN name="TrafficImpact.AffectedLocation.LocationSignature" value="$l" />
-                    ''').join()}
-                </AND>""" : ''}
-            </OR>
-            <LTE name="StartDateTime" value="${end.toIso8601String()}" />
-            ${!now ? '<GTE name="PrognosticatedEndDateTimeTrafficImpact" value="${start.toIso8601String()}" />' : ''}
-            <EQ name="Deleted" value="false" />
-        </AND>
-    </FILTER>
-    <INCLUDE>Header</INCLUDE>
-    <INCLUDE>ExternalDescription</INCLUDE>
-</QUERY>
-''', (result) {
-        return result.data['RESPONSE']['RESULT'].first['TrainMessage'].map<TrainMessage>((t) => TrainMessage(t));
-      }).suppress();
-    }
-
-    var trafficImpacts = await _callApi<Iterable<TrafficImpact>?>('''
+  static Future<Iterable<TrafficImpact>?> getTrainMessage(
+      Iterable<String> locationSignatures, DateTime start, DateTime end) async {
+    return await _callApi<Iterable<TrafficImpact>?>('''
 <QUERY objecttype="OperativeEvent" namespace="ols.open" schemaversion="1" orderby="TrafficImpact.PublicMessage.ModifiedDateTime desc">
     <FILTER>
         <OR>
@@ -291,11 +225,7 @@ class Trafikverket {
 ''', (result) {
       return result.data['RESPONSE']['RESULT'][0]['OperativeEvent'].expand<TrafficImpact>(
           (event) => (event['TrafficImpact'] as Iterable<dynamic>).map((t) => TrafficImpact.fromTrain(t)));
-    }).suppress();
-
-    return trafficImpacts
-        ?.cast<TS>()
-        .followedBy((await (trainMessages ?? Future.value(null)).suppress()) ?? Iterable.empty());
+    });
   }
 
   static Future<Iterable<TrainAnnouncement>?> getLateTrains(String locationSignature, DateTime? dateTime) async {
@@ -457,40 +387,6 @@ class TrainPositions {
   }
 
   TrainPositions(this.initial, this._sseUrl, this._trainRefs);
-}
-
-class TrainMessage implements TS {
-  late String? header;
-  late String externalDescription;
-  Severity severity = Severity.normal;
-
-  TrainMessage(dynamic data) {
-    header = data['Header'];
-    externalDescription = data['ExternalDescription'].replaceAll('\n', ' ').replaceAll('  ', ' ');
-  }
-
-  @override
-  Widget display(BuildContext context, {bool boldTitle = false, bool showAffectedStop = false}) {
-    return Padding(
-      padding: const EdgeInsets.all(5),
-      child: Row(
-        children: [
-          getNoteIcon(severity),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                    header == null
-                        ? externalDescription
-                        : '${header!.trim()}${externalDescription.contains(': ') || header!.contains(':') ? '' : ':'} '
-                            '$externalDescription',
-                    style: TextStyle(color: Theme.of(context).hintColor))),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class TrafficImpact implements TS {
