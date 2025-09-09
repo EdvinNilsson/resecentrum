@@ -214,7 +214,7 @@ class Trafikverket {
         <GTE name="TrafficImpact.PublicMessage.EndDateTime" value="${start?.toIso8601String() ?? '\$now'}" />
         ${direction != null ? '<EQ name="TrafficImpact.SelectedSection.SectionLocation.Signature" value="$direction" />' : ''}
         <EQ name="Deleted" value="false" />
-        <EXISTS name="TrafficImpact.PublicMessage" value="true" />
+        <EXISTS name="TrafficImpact.PublicMessage.Description" value="true" />
     </FILTER>
     <INCLUDE>TrafficImpact.PublicMessage.Header</INCLUDE>
     <INCLUDE>TrafficImpact.PublicMessage.Description</INCLUDE>
@@ -280,7 +280,7 @@ class Trafikverket {
         <LTE name="TrafficImpact.PublicMessage.StartDateTime" value="${end.toIso8601String()}" />
         <GTE name="TrafficImpact.PublicMessage.EndDateTime" value="${start.toIso8601String()}" />
         <EQ name="Deleted" value="false" />
-        <EXISTS name="TrafficImpact.PublicMessage" value="true" />
+        <EXISTS name="TrafficImpact.PublicMessage.Description" value="true" />
     </FILTER>
     <INCLUDE>TrafficImpact.PublicMessage.Header</INCLUDE>
     <INCLUDE>TrafficImpact.PublicMessage.Description</INCLUDE>
