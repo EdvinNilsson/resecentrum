@@ -590,17 +590,24 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
 
     List<LatLng> line = [];
     for (var point in serviceJourney.serviceJourneyCoordinates!) {
-      if (point == firstStop?.position) {
+      if (_nearlyIdentical(point, firstStop?.position)) {
         if (draw) line.clear();
         draw = true;
       }
 
       if (draw) line.add(point);
 
-      if (draw && point == lastStop?.position) break;
+      if (draw && _nearlyIdentical(point, lastStop?.position)) break;
     }
 
     return line;
+  }
+
+  bool _nearlyIdentical(LatLng a, LatLng? b) {
+    if (b == null) return false;
+    var dlat = a.latitude - b.latitude;
+    var dlng = a.longitude - b.longitude;
+    return dlat * dlat + dlng * dlng < 1e-9;
   }
 
   void _addLine(List<LatLng> points, Color fgColor, Color bgColor) {

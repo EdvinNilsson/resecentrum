@@ -216,8 +216,9 @@ class HomeState extends State<Home> {
     TripWidget tripWidget = _tabs.firstWhere((tab) => tab is TripWidget) as TripWidget;
 
     if (switchPage) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
-      _onTabTapped(_tabs.indexOf(tripWidget));
+      var pageIndex = _tabs.indexOf(tripWidget);
+      Navigator.of(_navigatorKeys[pageIndex].currentContext ?? context).popUntil((route) => route.isFirst);
+      _onTabTapped(pageIndex);
     }
 
     (isOrigin ? tripWidget.fromFieldController : tripWidget.toFieldController).setLocation(location);
