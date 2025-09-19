@@ -427,7 +427,7 @@ class Departure with DepartureStateMixin {
   Departure.fromJson(Json json, {this.arrival = false}) {
     detailsReference = json['detailsReference'];
     serviceJourney = ServiceJourney.fromJson(json['serviceJourney']);
-    stopPoint = StopPoint.fromJson(json['stopPoint']);
+    stopPoint = StopPoint.fromJson(json['stopPoint'], json['realtimeStopPoint']);
     plannedTime = DateTime.parse(json['plannedTime']).toLocal();
     estimatedTime = parseDateTime(json['estimatedTime']);
     isCancelled = json['isCancelled'];
@@ -489,7 +489,7 @@ class Line {
     designation = json['designation'] ?? shortName;
     backgroundColor = fromHex(json['backgroundColor']);
     foregroundColor = fromHex(json['foregroundColor']);
-    transportMode = TransportMode.values.asNameMap()[json['transportMode']]!;
+    transportMode = TransportMode.values.asNameMap()[json['transportMode']] ?? TransportMode.bus;
     transportSubMode = TransportSubMode.values.asNameMap()[json['transportSubMode']] ?? TransportSubMode.unknown;
     isWheelchairAccessible = json['isWheelchairAccessible'] ?? false;
   }
@@ -506,12 +506,18 @@ class StopPoint {
 
   String? get platform => estimatedPlatform ?? plannedPlatform;
 
-  StopPoint.fromJson(Json json) {
+  StopPoint.fromJson(Json stopPoint, Json? realtimeStopPoint) {
+    var json = realtimeStopPoint ?? stopPoint;
     gid = json['gid'];
     name = json['name'];
     plannedPlatform = json['platform'];
     position = LatLng(json['latitude'] ?? 0, json['longitude'] ?? 0);
     if (json.containsKey('stopArea')) stopArea = StopArea.fromJson(json['stopArea']);
+    estimatedPlatform = json['estimatedPlatform'];
+
+    if (realtimeStopPoint != null) {
+      estimatedPlatform = plannedPlatform;
+    }
   }
 }
 
@@ -622,7 +628,7 @@ class Call {
       : estimatedArrivalTime ?? estimatedDepartureTime ?? plannedArrivalTime ?? plannedDepartureTime!;
 
   Call.fromJson(Json json) {
-    stopPoint = StopPoint.fromJson(json['stopPoint']);
+    stopPoint = StopPoint.fromJson(json['stopPoint'], json['realtimeStopPoint']);
     plannedArrivalTime = parseDateTime(json['plannedArrivalTime']);
     plannedDepartureTime = parseDateTime(json['plannedDepartureTime']);
     estimatedArrivalTime = parseDateTime(json['estimatedArrivalTime']);
@@ -771,7 +777,7 @@ class LegCall {
   bool isCancelled = false;
 
   LegCall.fromJson(Json json) {
-    stopPoint = StopPoint.fromJson(json['stopPoint']);
+    stopPoint = StopPoint.fromJson(json['stopPoint'], json['realtimeStopPoint']);
     notes = List.from(json['notes']).map((e) => Note.fromJson(e)).toList(growable: false);
   }
 }
