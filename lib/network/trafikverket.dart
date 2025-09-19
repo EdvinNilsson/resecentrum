@@ -191,10 +191,15 @@ class Trafikverket {
     <INCLUDE>TrafficImpact.PublicMessage.Description</INCLUDE>
     <INCLUDE>TrafficImpact.SelectedSection.OperatingLevel</INCLUDE>
     <INCLUDE>TrafficImpact.SelectedSection.SectionLocation.Signature</INCLUDE>
+    <INCLUDE>TrafficImpact.SelectedSection.SectionLocation.Affected</INCLUDE>
 </QUERY>
 ''', (result) {
       return result.data['RESPONSE']['RESULT'][0]['OperativeEvent'].expand<TrafficImpact>((event) =>
-          (event['TrafficImpact'] as Iterable<dynamic>).map((t) => TrafficImpact.fromStation(t, locationSignature)));
+          (event['TrafficImpact'] as Iterable<dynamic>)
+              .map((t) => TrafficImpact.isValid(t, [locationSignature])
+                  ? TrafficImpact.fromStation(t, locationSignature)
+                  : null)
+              .nonNulls);
     });
   }
 
@@ -223,8 +228,11 @@ class Trafikverket {
     <INCLUDE>TrafficImpact.SelectedSection.SectionLocation.Affected</INCLUDE>
 </QUERY>
 ''', (result) {
-      return result.data['RESPONSE']['RESULT'][0]['OperativeEvent'].expand<TrafficImpact>(
-          (event) => (event['TrafficImpact'] as Iterable<dynamic>).map((t) => TrafficImpact.fromTrain(t)));
+      return result.data['RESPONSE']['RESULT'][0]['OperativeEvent'].expand<TrafficImpact>((event) =>
+          (event['TrafficImpact'] as Iterable<dynamic>)
+              .map((t) =>
+                  TrafficImpact.isValid(t, locationSignatures) ? TrafficImpact.fromTrain(t, locationSignatures) : null)
+              .nonNulls);
     });
   }
 
@@ -398,24 +406,37 @@ class TrafficImpact implements TS {
   TrafficImpact.fromStation(dynamic data, String locationSignature) {
     _setPublicMessage(data);
 
-    var operatingLevel = (data['SelectedSection'] as List).firstWhereOrNull((sec) =>
-        (sec['SectionLocation'] as List).any((loc) => loc['Signature'] == locationSignature))?['OperatingLevel'];
+    var operatingLevel = (data['SelectedSection'] as List?)?.firstWhereOrNull((sec) =>
+        (sec['SectionLocation'] as List?)?.any((loc) => loc['Signature'] == locationSignature) ??
+        false)?['OperatingLevel'];
     if (operatingLevel != null) severity = _getSeverity(operatingLevel);
   }
 
-  TrafficImpact.fromTrain(dynamic data) {
+  TrafficImpact.fromTrain(dynamic data, Iterable<String> locationSignatures) {
     _setPublicMessage(data);
-    var sections = data['SelectedSection'];
+    var sections = data['SelectedSection'] ?? [];
     for (var section in sections) {
       var operatingLevel = section['OperatingLevel'];
-      for (var location in section['SectionLocation']) {
-        var affected = location['Affected'];
+      if (operatingLevel == null) continue;
+      for (var location in section['SectionLocation'] ?? []) {
+        var affected = location['Affected'] ?? false;
         if (!affected) continue;
         var signature = location['Signature'];
-        severities[signature] = _getSeverity(operatingLevel);
+        if (signature == null) continue;
+        severities[signature] = [_getSeverity(operatingLevel), severities[signature]].nonNulls.max;
       }
     }
-    severity = severities.values.max;
+    severity = locationSignatures.map((sig) => severities[sig]).nonNulls.maxOrNull ?? severity;
+  }
+
+  static bool isValid(dynamic data, Iterable<String> locationSignatures) {
+    var hasDescription = data['PublicMessage']?['Description'] != null;
+    var affectingThisSection = (data['SelectedSection'] as List?)?.any((sec) =>
+            (sec['SectionLocation'] as List?)
+                ?.any((loc) => loc['Affected'] == true && locationSignatures.contains(loc['Signature'])) ??
+            false) ??
+        false;
+    return hasDescription && affectingThisSection;
   }
 
   void _setPublicMessage(dynamic data) {
