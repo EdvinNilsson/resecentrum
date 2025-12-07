@@ -427,7 +427,7 @@ class Departure with DepartureStateMixin {
   Departure.fromJson(Json json, {this.arrival = false}) {
     detailsReference = json['detailsReference'];
     serviceJourney = ServiceJourney.fromJson(json['serviceJourney']);
-    stopPoint = StopPoint.fromJson(json['stopPoint'], json['realtimeStopPoint']);
+    stopPoint = StopPoint.fromJson(json['stopPoint'], json['realtimeStopPoint'], isTrain);
     plannedTime = DateTime.parse(json['plannedTime']).toLocal();
     estimatedTime = parseDateTime(json['estimatedTime']);
     isCancelled = json['isCancelled'];
@@ -462,7 +462,7 @@ class ServiceJourney {
           .toList(growable: false);
     }
     if (json.containsKey('callsOnServiceJourney')) {
-      callsOnServiceJourney = List.from(json['callsOnServiceJourney']).map((e) => Call.fromJson(e)).toList();
+      callsOnServiceJourney = List.from(json['callsOnServiceJourney']).map((e) => Call.fromJson(e, isTrain)).toList();
     }
   }
 }
@@ -504,19 +504,29 @@ class StopPoint {
 
   String? estimatedPlatform;
 
-  String? get platform => estimatedPlatform ?? plannedPlatform;
-
-  StopPoint.fromJson(Json stopPoint, Json? realtimeStopPoint) {
-    var json = realtimeStopPoint ?? stopPoint;
-    gid = json['gid'];
-    name = json['name'];
-    plannedPlatform = json['platform'];
-    position = LatLng(json['latitude'] ?? 0, json['longitude'] ?? 0);
-    if (json.containsKey('stopArea')) stopArea = StopArea.fromJson(json['stopArea']);
-    estimatedPlatform = json['estimatedPlatform'];
+  StopPoint.fromJson(Json stopPoint, Json? realtimeStopPoint, bool isTrain) {
+    gid = realtimeStopPoint?['gid'] ?? stopPoint['gid'];
+    name = realtimeStopPoint?['name'] ?? stopPoint['name'];
+    plannedPlatform = stopPoint['platform'];
+    if (realtimeStopPoint?.containsKey('stopArea') ?? stopPoint.containsKey('stopArea')) {
+      stopArea = StopArea.fromJson(realtimeStopPoint?['stopArea'] ?? stopPoint['stopArea']);
+    }
+    position = LatLng(
+      realtimeStopPoint?['latitude'] ?? stopPoint['latitude'] ?? stopArea?.position.latitude ?? 0,
+      realtimeStopPoint?['longitude'] ?? stopPoint['longitude'] ?? stopArea?.position.longitude ?? 0,
+    );
 
     if (realtimeStopPoint != null) {
-      estimatedPlatform = plannedPlatform;
+      estimatedPlatform = realtimeStopPoint['platform'];
+
+      if (isTrain) {
+        plannedPlatform = estimatedPlatform ?? plannedPlatform;
+        estimatedPlatform = null;
+      }
+
+      if (plannedPlatform == estimatedPlatform) {
+        estimatedPlatform = null;
+      }
     }
   }
 }
@@ -627,8 +637,8 @@ class Call {
       ? time
       : estimatedArrivalTime ?? estimatedDepartureTime ?? plannedArrivalTime ?? plannedDepartureTime!;
 
-  Call.fromJson(Json json) {
-    stopPoint = StopPoint.fromJson(json['stopPoint'], json['realtimeStopPoint']);
+  Call.fromJson(Json json, bool isTrain) {
+    stopPoint = StopPoint.fromJson(json['stopPoint'], json['realtimeStopPoint'], isTrain);
     plannedArrivalTime = parseDateTime(json['plannedArrivalTime']);
     plannedDepartureTime = parseDateTime(json['plannedDepartureTime']);
     estimatedArrivalTime = parseDateTime(json['estimatedArrivalTime']);
@@ -646,6 +656,15 @@ class Call {
     isTripLegStop = json['isTripLegStop'];
     if (json.containsKey('tariffZones')) {
       tariffZones = List.from(json['tariffZones']).map((e) => TariffZone.fromJson(e)).toList(growable: false);
+    }
+
+    if (isTrain) {
+      plannedPlatform = estimatedPlatform ?? plannedPlatform;
+      estimatedPlatform = null;
+    }
+
+    if (plannedPlatform == estimatedPlatform) {
+      estimatedPlatform = null;
     }
   }
 }
@@ -776,9 +795,12 @@ class LegCall {
 
   bool isCancelled = false;
 
-  LegCall.fromJson(Json json) {
-    stopPoint = StopPoint.fromJson(json['stopPoint'], json['realtimeStopPoint']);
-    notes = List.from(json['notes']).map((e) => Note.fromJson(e)).toList(growable: false);
+  LegCall.fromJson(Json json, [bool isTrain = false]) {
+    stopPoint = StopPoint.fromJson(json['stopPoint'], json['realtimeStopPoint'], isTrain);
+    notes = List.from(json['notes'])
+        .map((e) => Note.fromJson(e))
+        .where((n) => isTrain.implies(!n.newPlatform))
+        .toList(growable: false);
   }
 }
 
@@ -953,11 +975,11 @@ class TripLeg extends JourneyLeg with JourneyLegOrder {
               true);
 
   TripLeg.fromJson(Json json) : super.fromJson(json) {
-    origin = LegCall.fromJson(json['origin']);
-    destination = LegCall.fromJson(json['destination']);
+    serviceJourney = ServiceJourney.fromJson(json['serviceJourney']);
+    origin = LegCall.fromJson(json['origin'], serviceJourney.isTrain);
+    destination = LegCall.fromJson(json['destination'], serviceJourney.isTrain);
     isCancelled = json['isCancelled'];
     isPartCancelled = json['isPartCancelled'];
-    serviceJourney = ServiceJourney.fromJson(json['serviceJourney']);
     plannedConnectingTimeInMinutes = json['plannedConnectingTimeInMinutes'];
     estimatedConnectingTimeInMinutes = json['estimatedConnectingTimeInMinutes'];
     isRiskOfMissingConnection = json['isRiskOfMissingConnection'] == true;
@@ -1108,7 +1130,9 @@ class TripLegDetails extends Leg with JourneyLegOrder {
   TripLegDetails.fromJson(Json json) {
     serviceJourneys = List.from(json['serviceJourneys']).map((e) => ServiceJourney.fromJson(e)).toList();
     ServiceJourneyDetails.cleanUpServiceJourneys(serviceJourneys);
-    callsOnTripLeg = List.from(json['callsOnTripLeg']).map((e) => Call.fromJson(e)).toList(growable: false);
+    callsOnTripLeg = List.from(json['callsOnTripLeg'])
+        .map((e) => Call.fromJson(e, serviceJourneys.first.isTrain))
+        .toList(growable: false);
     if (json.containsKey('tripLegCoordinates')) {
       tripLegCoordinates = List.from(json['tripLegCoordinates'])
           .map((coord) => LatLng(coord['latitude'], coord['longitude']))
