@@ -197,6 +197,13 @@ class PlaneraResa {
       'limit': limit ?? 20,
     };
 
+    // Workaround to prevent internal server errors if timeSpanInMinutes exceeds midnight
+    var dateTime = startDateTime ?? DateTime.now();
+    var minutesToMidnight = dateTime.startOfNextDay().difference(dateTime).inMinutes;
+    if ((timeSpanInMinutes ?? 60) > minutesToMidnight) {
+      timeSpanInMinutes = minutesToMidnight;
+    }
+
     if (startDateTime != null) params['startDateTime'] = startDateTime.toRfc3339String();
     if (timeSpanInMinutes != null) params['timeSpanInMinutes'] = timeSpanInMinutes;
 
@@ -813,6 +820,10 @@ class Note implements TS {
 
   bool get guaranteedChange => type == 'guaranteed-change';
 
+  bool get newPlatform => type == 'new-platform';
+
+  bool get riskOfMissingConnection => type == 'risk-of-missing-connection';
+
   Note(this.text, [this.severity = Severity.low]) {
     type = '';
   }
@@ -927,7 +938,7 @@ sealed class JourneyLeg extends Leg {
   JourneyLeg.fromJson(Json json) {
     notes = List.from(json['notes'])
         .map((e) => Note.fromJson(e))
-        .where((n) => n.text != 'Risk att missa bytet.' && !n.text.contains(': Inställd'))
+        .where((n) => !n.riskOfMissingConnection && !n.text.contains(': Inställd'))
         .toList(growable: false);
     distanceInMeters = json['distanceInMeters'] ?? json['estimatedDistanceInMeters'];
     plannedDepartureTime = DateTime.parse(json['plannedDepartureTime']).toLocal();
@@ -985,7 +996,7 @@ class TripLeg extends JourneyLeg with JourneyLegOrder {
     isRiskOfMissingConnection = json['isRiskOfMissingConnection'] == true;
     if (json.containsKey('occupancy')) occupancy = Occupancy.fromJson(json['occupancy']);
     journeyLegIndex = json['journeyLegIndex'];
-    riskOfMissingConnectionNote = json['notes'].any((note) => note['text'] == 'Risk att missa bytet.');
+    riskOfMissingConnectionNote = json['notes'].any((note) => note['type'] == 'risk-of-missing-connection');
   }
 }
 
@@ -1509,7 +1520,7 @@ class PlaneraResaError extends DefaultError {
         message = 'Destinationens namn är för långt';
         break;
       case 5003: // Service error
-        message = 'Serverfel';
+        message = 'Servicefel';
         break;
       case 6002: // Error in date field
       case 6004: // Unknown arrival station

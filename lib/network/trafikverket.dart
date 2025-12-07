@@ -194,12 +194,13 @@ class Trafikverket {
     <INCLUDE>TrafficImpact.SelectedSection.SectionLocation.Affected</INCLUDE>
 </QUERY>
 ''', (result) {
-      return result.data['RESPONSE']['RESULT'][0]['OperativeEvent'].expand<TrafficImpact>((event) =>
-          (event['TrafficImpact'] as Iterable<dynamic>)
+      return result.data['RESPONSE']['RESULT'][0]['OperativeEvent']
+          .expand<TrafficImpact>((event) => (event['TrafficImpact'] as Iterable<dynamic>)
               .map((t) => TrafficImpact.isValid(t, [locationSignature])
                   ? TrafficImpact.fromStation(t, locationSignature)
                   : null)
-              .nonNulls);
+              .nonNulls)
+          .toSet();
     });
   }
 
@@ -228,11 +229,12 @@ class Trafikverket {
     <INCLUDE>TrafficImpact.SelectedSection.SectionLocation.Affected</INCLUDE>
 </QUERY>
 ''', (result) {
-      return result.data['RESPONSE']['RESULT'][0]['OperativeEvent'].expand<TrafficImpact>((event) =>
-          (event['TrafficImpact'] as Iterable<dynamic>)
+      return result.data['RESPONSE']['RESULT'][0]['OperativeEvent']
+          .expand<TrafficImpact>((event) => (event['TrafficImpact'] as Iterable<dynamic>)
               .map((t) =>
                   TrafficImpact.isValid(t, locationSignatures) ? TrafficImpact.fromTrain(t, locationSignatures) : null)
-              .nonNulls);
+              .nonNulls)
+          .toSet();
     });
   }
 
@@ -482,6 +484,18 @@ class TrafficImpact implements TS {
       ),
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TrafficImpact &&
+          runtimeType == other.runtimeType &&
+          header == other.header &&
+          description == other.description &&
+          severity == other.severity;
+
+  @override
+  int get hashCode => Object.hash(header, description, severity);
 }
 
 class TrainLegRef {

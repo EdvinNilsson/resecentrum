@@ -297,10 +297,12 @@ Future<ServiceJourneyDetailsWithTrafficSituations> getJourneyDetails(DetailsRef 
 
         if (trainMessages != null) {
           trainMessages = trainMessages.where(
-              (msg) => msg.severities.keys.toSet().intersection(locationSignatureToStopIdx.keys.toSet()).length > 1);
+              (msg) => msg.severities.keys.toSet().intersection(locationSignatureToStopIdx.keys.toSet()).length >= 3);
           notes.addAll(trainMessages);
 
           for (var msg in trainMessages.whereType<TrafficImpact>()) {
+            if (msg.severities.keys.toSet().containsAll(locationSignatureToStopIdx.keys)) continue;
+
             msg.severities.forEach((sig, severity) {
               var idx = locationSignatureToStopIdx[sig];
               if (idx != null) stopNoteIcons[idx] = maxOrNull(stopNoteIcons[idx], severity);
