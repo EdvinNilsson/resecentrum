@@ -117,6 +117,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
   void _onMapCreated(MapLibreMapController controller) {
     _mapController = controller;
     _mapController.onFeatureTapped.add(_onFeatureTap);
+    _mapController.setMaximumFps(60);
   }
 
   @override
@@ -393,7 +394,8 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
     }
   }
 
-  void _onFeatureTap(dynamic featureId, math.Point<double> point, LatLng latLng, String layerId) async {
+  void _onFeatureTap(
+      Point<double> point, LatLng coordinates, String featureId, String layerId, Annotation? annotation) async {
     var vehicle = _vehicles.values.firstWhereOrNull((v) => v.journeyId == featureId);
     if (vehicle == null) return;
     _showVehicleSheet(vehicle);
