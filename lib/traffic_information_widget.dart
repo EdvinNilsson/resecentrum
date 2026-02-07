@@ -164,7 +164,7 @@ html {
         background-color: var(--canvas-color);
     }
     
-    .bg-white, .bg-sm-white {
+    .bg-white, .bg-sm-white, .accordion-button {
         background-color: var(--canvas-color) !important;
     }
      
@@ -186,8 +186,12 @@ html {
         background-color: var(--card-color) !important;
     }
     
-    .autocomplete .background-transparent {
+    .autocomplete .background-transparent, .accordion-item {
         color: white !important;
+    }
+    
+    .accordion-button {
+        color: #c2e4ef !important;
     }
     
     .autocomplete .background-transparent::placeholder {
