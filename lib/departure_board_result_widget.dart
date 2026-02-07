@@ -159,7 +159,6 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
             ]),
         backgroundColor: cardBackgroundColor(context),
         body: SystemGestureArea(
-          MediaQuery.of(context).systemGestureInsets,
           child: RefreshIndicator(
             key: _refreshKey,
             onRefresh: () => _handleRefresh(),

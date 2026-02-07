@@ -138,7 +138,6 @@ class TripDetailsWidget extends StatelessWidget {
         ),
         backgroundColor: cardBackgroundColor(context),
         body: SystemGestureArea(
-          MediaQuery.of(context).systemGestureInsets,
           child: RefreshIndicator(
               onRefresh: () => _handleRefresh(),
               child: StreamBuilder<JourneyDetails>(
@@ -393,6 +392,11 @@ class TripDetailsWidget extends StatelessWidget {
     await setTripLegTrainInfo([journey]);
     var journeyDetails =
         await journeyDetailsReq ?? await PlaneraResa.journeyDetails(journey.detailsReference, journeyDetailsIncludes);
+
+    // Reconstructed connection links use the straight-line distance instead of the actual distance,
+    // so use the connection links from journey details instead.
+    journey.connectionLinks = journeyDetails.connectionLinks;
+
     if (!_streamController.isClosed) _streamController.add(journeyDetails);
   }
 }
@@ -412,6 +416,17 @@ ConnectionValidation getConnectionValidation(JourneyLeg? before, Link? link, Jou
       : link?.duration ?? Duration.zero;
 
   var walkSpeed = getWalkSpeed(link?.distanceInMeters, duration);
+
+  var transfer =
+      before is TripLeg && after is TripLeg && before.destination.stopPoint.name == after.origin.stopPoint.name;
+
+  if (transfer && link?.distanceInMeters != null) {
+    var unrealisticWalkingDistance = link!.distanceInMeters! >
+        distanceBetween(before.destination.stopPoint.position, after.origin.stopPoint.position) * 25;
+    if (unrealisticWalkingDistance) {
+      walkSpeed = null;
+    }
+  }
 
   var guaranteedChange = (link?.notes ?? before?.notes)?.any((note) => note.guaranteedChange) ?? false;
 

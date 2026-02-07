@@ -448,7 +448,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
       var touchRadius = 48 * devicePixelRatio;
 
       List<math.Point<num>> points =
-          await _mapController.toScreenLocationBatch(_stops.map((stop) => stop.item.position));
+          await _mapController.toScreenLocationBatch(_stops.map((stop) => stop.item.stopPoint.position));
 
       var stop = (await _getTappedElement(_stops, point, points, touchRadius))?.item;
       if (stop != null) {
@@ -645,7 +645,7 @@ class MapWidgetState extends State<MapWidget> with WidgetsBindingObserver {
           },
           'geometry': {
             'type': 'Point',
-            'coordinates': call.position.toGeoJsonCoordinates(),
+            'coordinates': call.stopPoint.position.toGeoJsonCoordinates(),
           }
         });
         _stops.add(MapFocusable(call, focus));

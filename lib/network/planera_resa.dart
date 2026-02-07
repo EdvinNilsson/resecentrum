@@ -453,13 +453,13 @@ class ServiceJourney {
   late String? origin;
   late String direction;
   late Line line;
-  late List<LatLng>? serviceJourneyCoordinates;
-  late List<Call>? callsOnServiceJourney;
+  List<LatLng>? serviceJourneyCoordinates;
+  List<Call>? callsOnServiceJourney;
 
   bool get isTrain => line.isTrain;
 
   ServiceJourney.fromJson(Json json) {
-    gid = json['gid'] ?? '9015014000000000';
+    gid = json['gid']?.length == 16 ? json['gid'] : '9015014000000000';
     origin = json['origin'];
     direction = json['direction'] ?? '';
     line = Line.fromJson(json['line']);
@@ -470,6 +470,9 @@ class ServiceJourney {
     }
     if (json.containsKey('callsOnServiceJourney')) {
       callsOnServiceJourney = List.from(json['callsOnServiceJourney']).map((e) => Call.fromJson(e, isTrain)).toList();
+    }
+    if (serviceJourneyCoordinates?.isEmpty == true) {
+      serviceJourneyCoordinates = callsOnServiceJourney?.map((call) => call.position).toList(growable: false) ?? [];
     }
   }
 }
@@ -507,7 +510,7 @@ class StopPoint {
   late String name;
   late String? plannedPlatform;
   late LatLng position;
-  late StopArea? stopArea;
+  StopArea? stopArea;
 
   String? estimatedPlatform;
 
@@ -577,8 +580,6 @@ class ServiceJourneyDetails {
   }
 
   static void cleanUpServiceJourneys(List<ServiceJourney> serviceJourneys) {
-    serviceJourneys.removeWhere((serviceJourney) => serviceJourney.gid.length != 16);
-
     var firstCallsOnServiceJourney = serviceJourneys.first.callsOnServiceJourney!;
 
     if (firstCallsOnServiceJourney.first.stopPoint.stopArea?.gid ==
@@ -616,14 +617,14 @@ class Call {
   late String? estimatedPlatform;
   late LatLng position;
   late int index;
-  late Occupancy? occupancy;
+  Occupancy? occupancy;
   late bool isCancelled;
   late bool isDepartureCancelled;
   late bool isArrivalCancelled;
   late bool? isOnTripLeg;
   late bool? isTripLegStart;
   late bool? isTripLegStop;
-  late List<TariffZone>? tariffZones;
+  List<TariffZone>? tariffZones;
 
   DepartureStateMixin depState = StopDepartureState();
   DepartureStateMixin arrState = StopDepartureState();
@@ -681,7 +682,7 @@ class StopArea {
   late String name;
   late LatLng position;
   late TariffZone tariffZone1;
-  late TariffZone? tariffZone2;
+  TariffZone? tariffZone2;
 
   StopArea.fromJson(Json json) {
     gid = json['gid'];
@@ -713,7 +714,7 @@ class Journeys {
 
   Journeys.fromJson(Json json) {
     results = List.from(json['results']).map((e) => Journey.fromJson(e)).toList();
-    if (json.containsKey('pagination')) pagination = Pagination.fromJson(json['pagination']);
+    pagination = json.containsKey('pagination') ? Pagination.fromJson(json['pagination']) : null;
     links = Links.fromJson(json['links']);
   }
 }
@@ -727,7 +728,7 @@ class Journey {
   ArrivalAccessLink? arrivalAccessLink;
   DestinationLink? destinationLink;
   late bool isDeparted;
-  late Occupancy? occupancy;
+  Occupancy? occupancy;
 
   Journey.fromJson(Json json) {
     reconstructionReference = json['reconstructionReference'];
@@ -966,7 +967,7 @@ class TripLeg extends JourneyLeg with JourneyLegOrder {
   late int? plannedConnectingTimeInMinutes;
   late int? estimatedConnectingTimeInMinutes;
   late bool isRiskOfMissingConnection;
-  late Occupancy? occupancy;
+  Occupancy? occupancy;
 
   late bool riskOfMissingConnectionNote;
 
@@ -1024,9 +1025,9 @@ class ConnectionLink extends Link with JourneyLegOrder {
   ConnectionLink.fromJson(Json json) : super.fromJson(json) {
     origin = LegCall.fromJson(json['origin']);
     destination = LegCall.fromJson(json['destination']);
-    if (json.containsKey('segments')) {
-      segments = List.from(json['segments']).map((e) => Segment.fromJson(e)).toList(growable: false);
-    }
+    segments = json.containsKey('segments')
+        ? List.from(json['segments']).map((e) => Segment.fromJson(e)).toList(growable: false)
+        : null;
     journeyLegIndex = json['journeyLegIndex'];
   }
 }
@@ -1039,9 +1040,9 @@ class ArrivalAccessLink extends Link {
   ArrivalAccessLink.fromJson(Json json) : super.fromJson(json) {
     origin = LegCall.fromJson(json['origin']);
     destination = LinkEndpoint.fromJson(json['destination']);
-    if (json.containsKey('segments')) {
-      segments = List.from(json['segments']).map((e) => Segment.fromJson(e)).toList(growable: false);
-    }
+    segments = json.containsKey('segments')
+        ? List.from(json['segments']).map((e) => Segment.fromJson(e)).toList(growable: false)
+        : null;
   }
 }
 
@@ -1053,9 +1054,9 @@ class DepartureAccessLink extends Link {
   DepartureAccessLink.fromJson(Json json) : super.fromJson(json) {
     origin = LinkEndpoint.fromJson(json['origin']);
     destination = LegCall.fromJson(json['destination']);
-    if (json.containsKey('segments')) {
-      segments = List.from(json['segments']).map((e) => Segment.fromJson(e)).toList(growable: false);
-    }
+    segments = json.containsKey('segments')
+        ? List.from(json['segments']).map((e) => Segment.fromJson(e)).toList(growable: false)
+        : null;
   }
 }
 
@@ -1067,9 +1068,9 @@ class DestinationLink extends Link {
   DestinationLink.fromJson(Json json) : super.fromJson(json) {
     origin = LinkEndpoint.fromJson(json['origin']);
     destination = LinkEndpoint.fromJson(json['destination']);
-    if (json.containsKey('segments')) {
-      segments = List.from(json['segments']).map((e) => Segment.fromJson(e)).toList(growable: false);
-    }
+    segments = json.containsKey('segments')
+        ? List.from(json['segments']).map((e) => Segment.fromJson(e)).toList(growable: false)
+        : null;
   }
 }
 

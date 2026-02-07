@@ -102,27 +102,32 @@ class HomeState extends State<Home> {
       canPop: false,
       onPopInvokedWithResult: _onPop,
       child: Scaffold(
-        body: Row(
-          children: [
-            if (landscape)
-              NavigationRail(
-                onDestinationSelected: _onTabTapped,
-                labelType: NavigationRailLabelType.all,
-                destinations: _tabNames
-                    .map((tab) => NavigationRailDestination(icon: Icon(tab.icon), label: Text(tab.label)))
-                    .toList(growable: false),
-                selectedIndex: _currentIndex,
-              ),
-            if (landscape) const VerticalDivider(width: 1),
-            Expanded(
-              child: Stack(children: [
-                _buildOffstageNavigator(0),
-                _buildOffstageNavigator(1),
-                _buildOffstageNavigator(2),
-                _buildVisibilityNavigator(3),
-              ]),
-            )
-          ],
+        body: SafeArea(
+          right: false,
+          top: false,
+          bottom: false,
+          child: Row(
+            children: [
+              if (landscape)
+                NavigationRail(
+                  onDestinationSelected: _onTabTapped,
+                  labelType: NavigationRailLabelType.all,
+                  destinations: _tabNames
+                      .map((tab) => NavigationRailDestination(icon: Icon(tab.icon), label: Text(tab.label)))
+                      .toList(growable: false),
+                  selectedIndex: _currentIndex,
+                ),
+              if (landscape) const VerticalDivider(width: 1),
+              Expanded(
+                child: Stack(children: [
+                  _buildOffstageNavigator(0),
+                  _buildOffstageNavigator(1),
+                  _buildOffstageNavigator(2),
+                  _buildVisibilityNavigator(3),
+                ]),
+              )
+            ],
+          ),
         ),
         bottomNavigationBar: !landscape
             ? NavigationBar(

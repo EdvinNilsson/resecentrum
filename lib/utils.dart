@@ -1016,9 +1016,8 @@ void setDepartureState(TrainAnnouncement activity, DepartureStateMixin departure
 
 class SystemGestureArea extends StatelessWidget {
   final Widget child;
-  final EdgeInsets systemGestureInsets;
 
-  const SystemGestureArea(this.systemGestureInsets, {required this.child, super.key});
+  const SystemGestureArea({required this.child, super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -1030,7 +1029,7 @@ class SystemGestureArea extends StatelessWidget {
             child: Container(
                 color: Colors.transparent,
                 width: MediaQuery.of(context).size.width,
-                height: systemGestureInsets.bottom))
+                height: MediaQuery.of(context).padding.bottom))
       ],
     );
   }
@@ -1038,8 +1037,8 @@ class SystemGestureArea extends StatelessWidget {
 
 const List<int> tramStops = [
   1050, 1200, 1450, 1620, 1690, 1745, 1850, 1900, 2150, 2170, 2200, 2210, 2370, 2470, 2540, 2630, 2670, 2730, 2790,
-  3040, 3060, 3360, 3620, 3880, 4320, 4370, 4527, 4700, 4730, 4780, 4810, 4870, 5110, 5140, 5170, 5220, 5330, 5531,
-  5630, 5660, 5710, 5740, 5763, 6040, 6260, 6570, 7150, 7172, 7200, 7270, 7280, 7320, 7370, 7750, 8590 // tramStops
+  3040, 3060, 3360, 3620, 3628, 3880, 4320, 4370, 4527, 4700, 4730, 4780, 4810, 4870, 5110, 5140, 5170, 5220, 5330,
+  5531, 5630, 5660, 5710, 5740, 5763, 6040, 6260, 6570, 7150, 7172, 7200, 7270, 7280, 7320, 7370, 7750, 8590 //
 ];
 
 const List<int> trainStops = [
@@ -1049,7 +1048,7 @@ const List<int> trainStops = [
   31332, 31385, 32010, 34001, 34123, 34124, 34125, 34126, 34254, 34255, 34289, 35004, 37010, 37234, 37375, 37376, 37386,
   40010, 40206, 40217, 40218, 41010, 41280, 41291, 43111, 44801, 45500, 52602, 61900, 62717, 66021, 66105, 66134, 66135,
   72010, 72017, 72021, 74000, 75000, 75045, 75047, 75048, 75053, 75054, 78000, 78158, 79003, 80800, 80801, 80802, 81600,
-  82177, 82900, 82902, 82903, 82904, 85044, 86500, 88000, 88002, 88009, 88016, 88020, 89020 // trainStops
+  82177, 82900, 82902, 82903, 82904, 85044, 86500, 88000, 88002, 88009, 88016, 88020, 89020 //
 ];
 
 const List<int> boatStops = [
@@ -1057,7 +1056,7 @@ const List<int> boatStops = [
   4420, 4493, 6030, 9620, 11213, 11310, 11430, 11616, 11617, 11710, 11750, 11810, 11850, 11910, 14290, 14294, 14295,
   14296, 14297, 14310, 14312, 14315, 14590, 14592, 14662, 15120, 15530, 15534, 15535, 15536, 15537, 15546, 15547, 15548,
   15690, 15696, 15721, 15725, 15746, 15807, 15932, 23112, 23509, 23518, 23542, 25226, 25292, 25298, 25302, 26115, 26180,
-  26190, 26410, 26411, 26420, 26421, 26422, 26430 // boatStops
+  26190, 26410, 26411, 26420, 26421, 26422, 26430 //
 ];
 
 IconData getStopIcon(StopLocation stop) {

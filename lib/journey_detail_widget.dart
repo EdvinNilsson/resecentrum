@@ -77,7 +77,6 @@ class _JourneyDetailsWidgetState extends State<JourneyDetailsWidget> {
           ],
         ),
         body: SystemGestureArea(
-          MediaQuery.of(context).systemGestureInsets,
           child: RefreshIndicator(
             onRefresh: () => _handleRefresh(),
             child: StreamBuilder<ServiceJourneyDetailsWithTrafficSituations>(
@@ -187,7 +186,9 @@ Future<ServiceJourneyDetailsWithTrafficSituations> getJourneyDetails(DetailsRef 
   List<Severity?> stopNoteIcons = List.filled(allStops.length, null, growable: false);
 
   filteredLineTs?.followedBy(journeyTs ?? []).forEach((ts) {
-    if (ts.affectedStopPoints.length >= stopPointGids.length) return;
+    var stopAreaGids = stopPointGids.map((stopPointGid) => stopAreaFromStopPoint(stopPointGid)).toSet();
+    if (ts.affectedStopPoints.map((s) => s.stopAreaGid).nonNulls.toSet().containsAll(stopAreaGids)) return;
+
     for (var stop in ts.affectedStopPoints) {
       int i = stopPointGids.indexWhere((stopPointGid) => stopAreaFromStopPoint(stopPointGid) == stop.stopAreaGid);
       if (i < 0) continue;
@@ -381,12 +382,7 @@ RenderObjectWidget journeyDetailList(ServiceJourneyDetails serviceJourneyDetails
                         builder: (context) => MapWidget([MapJourney(serviceJourneyDetails: serviceJourneyDetails)],
                             focusStopPoints: [stop.stopPoint.gid]))),
             child: stopRowFromStop(stop,
-                alightingOnly: stop.platform.isEmpty &&
-                    !stop.isCancelled &&
-                    !isFirstOrLastStop &&
-                    !isTrain &&
-                    (validTimeInterval == null ||
-                        (stop.plannedDepartureTime?.isBefore(validTimeInterval!.validUntil) ?? true)),
+                alightingOnly: stop.plannedDepartureTime == null && !stop.isCancelled && !isFirstOrLastStop && !isTrain,
                 boardingOnly: stop.plannedArrivalTime == null && !stop.isCancelled && !isFirstOrLastStop && !isTrain,
                 noteIcon: stopNoteIcons.elementAt(i),
                 noteIconWithoutPlatform: noteIconWithoutPlatform,
