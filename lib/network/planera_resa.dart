@@ -34,9 +34,14 @@ class PlaneraResa {
           options: Options(headers: {'Authorization': 'Bearer $accessToken', 'Accept-Language': 'sv-SE'}));
       return generator(response);
     } on DioException catch (error) {
-      if (!secondTry && (error.response?.statusCode == 401 || error.response?.statusCode == 403)) {
-        accessToken = await authorize();
-        return callApi(path, queryParameters, generator, secondTry: true, dio: dio);
+      if (!secondTry) {
+        var statusCode = error.response?.statusCode;
+        if (statusCode == 401 || statusCode == 403) {
+          accessToken = await authorize();
+        }
+        if (statusCode == 401 || statusCode == 403 || statusCode == 429) {
+          return callApi(path, queryParameters, generator, secondTry: true, dio: dio);
+        }
       }
       if (error.response != null) checkError(error.response!);
       return Future.error(NoInternetError(error));
@@ -352,6 +357,9 @@ void checkError(Response<dynamic> response) {
       throw PlaneraResaError.fromJson(response.data);
     case 404:
       throw DisplayableError('Innehållet kunde inte hittas');
+    case 429:
+      throw DisplayableError('För många förfrågningar skickades under en kort tidsperiod',
+          description: 'Vänligen försök igen om en liten stund');
     case 500:
       throw DisplayableError('Internt serverfel');
     case 503:
@@ -604,6 +612,12 @@ class ServiceJourneyDetails {
 
     lastCallsOnServiceJourney.last.plannedDepartureTime = null;
     lastCallsOnServiceJourney.last.estimatedDepartureTime = null;
+
+    serviceJourneys.removeWhere((serviceJourney) {
+      var firstCall = serviceJourney.callsOnServiceJourney!.first;
+      var lastCall = serviceJourney.callsOnServiceJourney!.last;
+      return (firstCall.plannedDepartureTime == null) || (lastCall.plannedArrivalTime == null);
+    });
   }
 }
 

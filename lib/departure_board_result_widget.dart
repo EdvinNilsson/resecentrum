@@ -38,7 +38,7 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
   Timer? _timer;
   DateTime? _dateTime;
   final GlobalKey<RefreshIndicatorState> _refreshKey = GlobalKey();
-  ValueListenable<bool>? _tickerModeNotifier;
+  ValueListenable<TickerModeData>? _tickerModeNotifier;
 
   @override
   void initState() {
@@ -47,13 +47,13 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
     _dateTime = widget._initialDateTime;
     _updateDepartureBoard();
     _initTimer(updateIntermittently: false);
-    TickerMode.getNotifier(context).addListener(_onTickerModeChange);
+    TickerMode.getValuesNotifier(context).addListener(_onTickerModeChange);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final newNotifier = TickerMode.getNotifier(context);
+    final newNotifier = TickerMode.getValuesNotifier(context);
     if (_tickerModeNotifier != newNotifier) {
       _tickerModeNotifier?.removeListener(_onTickerModeChange);
       _tickerModeNotifier = newNotifier;
@@ -83,7 +83,7 @@ class _DepartureBoardResultWidgetState extends State<DepartureBoardResultWidget>
   }
 
   void _onTickerModeChange() {
-    if (TickerMode.getNotifier(context).value) {
+    if (TickerMode.getValuesNotifier(context).value.enabled) {
       if (_timer?.isActive == false) {
         _initTimer();
       }

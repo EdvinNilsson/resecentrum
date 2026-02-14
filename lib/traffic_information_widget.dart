@@ -42,7 +42,7 @@ class TrafficInformationState extends State<TrafficInformationWidget> {
           setState(() => _isLoading = false);
         }, onWebResourceError: (e) {
           _finishRefresh();
-          if (!mounted) return;
+          if (!mounted || (e.isForMainFrame == false)) return;
           if (kDebugMode) print(e);
           setState(() => _error = e);
         }, onNavigationRequest: (NavigationRequest request) {
